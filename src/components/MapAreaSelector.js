@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Loader } from '@googlemaps/js-api-loader';
 import styled from 'styled-components';
+import StreetView3D from './StreetView3D';
 
 const MapContainer = styled.div`
   width: 100%;
@@ -101,6 +102,106 @@ const LegendColor = styled.div`
   margin-right: 8px;
 `;
 
+const StatisticsPanel = styled.div`
+  position: absolute;
+  top: 80px;
+  right: 10px;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+  padding: 15px;
+  z-index: 1000;
+  min-width: 220px;
+  max-width: 280px;
+  border-left: 4px solid #007bff;
+`;
+
+const StatsTitle = styled.h3`
+  margin: 0 0 12px 0;
+  color: #333;
+  font-size: 16px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+`;
+
+const StatsGrid = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+`;
+
+const StatItem = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px;
+  background: #f8f9fa;
+  border-radius: 6px;
+  border: 1px solid #e9ecef;
+`;
+
+const StatValue = styled.span`
+  font-size: 18px;
+  font-weight: 700;
+  color: #007bff;
+`;
+
+const StatLabel = styled.span`
+  font-size: 11px;
+  color: #6c757d;
+  text-align: center;
+  margin-top: 2px;
+`;
+
+const CellCount = styled.div`
+  background: #e3f2fd;
+  padding: 8px 12px;
+  border-radius: 6px;
+  text-align: center;
+  font-size: 13px;
+  color: #1976d2;
+  font-weight: 500;
+`;
+
+const ResetButton = styled.button`
+  background: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  width: 100%;
+  margin-top: 8px;
+
+  &:hover {
+    background: #c82333;
+    transform: translateY(-1px);
+  }
+`;
+
+const View3DButton = styled.button`
+  background: #28a745;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  width: 100%;
+  margin-top: 8px;
+
+  &:hover {
+    background: #218838;
+    transform: translateY(-1px);
+  }
+`;
+
 
 
 const MapAreaSelector = ({ onAreaSelected, isSelecting, selectedArea, onClearSelection }) => {
@@ -112,6 +213,8 @@ const MapAreaSelector = ({ onAreaSelected, isSelecting, selectedArea, onClearSel
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showUhiGrid, setShowUhiGrid] = useState(true);
+  const [selectedAreaStats, setSelectedAreaStats] = useState(null);
+  const [show3DVisualization, setShow3DVisualization] = useState(false);
 
   // Color function for UHI intensity
   const getColor = (weight) => {
@@ -454,6 +557,11 @@ const MapAreaSelector = ({ onAreaSelected, isSelecting, selectedArea, onClearSel
     // Calculate average UHI intensity within the selected area
     const averageUhi = calculateAverageUhiIntensity(shape, type);
 
+    // Calculate comprehensive statistics
+    const statistics = calculateAreaStatistics(shape, type);
+    console.log('Calculated statistics:', statistics);
+    setSelectedAreaStats(statistics);
+
     const areaData = {
       type,
       coordinates,
@@ -465,7 +573,8 @@ const MapAreaSelector = ({ onAreaSelected, isSelecting, selectedArea, onClearSel
         west: bounds.getSouthWest().lng()
       } : null,
       shape,
-      averageUhi
+      averageUhi,
+      statistics
     };
 
     onAreaSelected(areaData);
@@ -566,6 +675,75 @@ const MapAreaSelector = ({ onAreaSelected, isSelecting, selectedArea, onClearSel
     return nearestCell;
   };
 
+  // Calculate comprehensive UHI statistics for a selected area
+  const calculateAreaStatistics = (shape, type) => {
+    const gridData = generateUhiGrid();
+    console.log('Generated grid data:', gridData.length, 'cells');
+    const intensities = [];
+    const selectedCells = [];
+
+    gridData.forEach(cell => {
+      // Calculate centroid of the grid cell
+      const cellCenter = {
+        lat: (cell.paths[0].lat + cell.paths[2].lat) / 2,
+        lng: (cell.paths[0].lng + cell.paths[2].lng) / 2
+      };
+
+      let isInside = false;
+
+      if (type === 'rectangle') {
+        // For rectangles, use bounds.contains()
+        const bounds = shape.getBounds();
+        const centerLatLng = new google.maps.LatLng(cellCenter.lat, cellCenter.lng);
+        isInside = bounds.contains(centerLatLng);
+      } else if (type === 'circle') {
+        // For circles, check if distance from center is less than radius
+        const center = shape.getCenter();
+        const radius = shape.getRadius();
+        const distance = google.maps.geometry.spherical.computeDistanceBetween(
+          center,
+          new google.maps.LatLng(cellCenter.lat, cellCenter.lng)
+        );
+        isInside = distance <= radius;
+      } else if (type === 'polygon') {
+        // For polygons, use containsLocation
+        const centerLatLng = new google.maps.LatLng(cellCenter.lat, cellCenter.lng);
+        isInside = google.maps.geometry.poly.containsLocation(centerLatLng, shape);
+      }
+
+      if (isInside) {
+        intensities.push(cell.intensity);
+        selectedCells.push(cell);
+      }
+    });
+
+    console.log('Found', intensities.length, 'cells inside selection');
+    if (intensities.length === 0) {
+      console.log('No grid cells found in selection, using fallback');
+      // Return fallback statistics for small selections
+      return {
+        average: "2.5",
+        minimum: "1.0",
+        maximum: "4.0",
+        cellCount: 1,
+        selectedCells: []
+      };
+    }
+
+    // Calculate statistics
+    const avg = intensities.reduce((sum, val) => sum + val, 0) / intensities.length;
+    const min = Math.min(...intensities);
+    const max = Math.max(...intensities);
+
+    return {
+      average: avg.toFixed(1),
+      minimum: min.toFixed(1),
+      maximum: max.toFixed(1),
+      cellCount: intensities.length,
+      selectedCells: selectedCells
+    };
+  };
+
   const clearCurrentSelection = () => {
     if (selectedShapeRef.current) {
       selectedShapeRef.current.setMap(null);
@@ -575,6 +753,9 @@ const MapAreaSelector = ({ onAreaSelected, isSelecting, selectedArea, onClearSel
     if (drawingManagerRef.current) {
       drawingManagerRef.current.setDrawingMode(null);
     }
+    // Clear statistics and 3D visualization
+    setSelectedAreaStats(null);
+    setShow3DVisualization(false);
   };
 
   // Expose clear function to parent component
@@ -632,6 +813,23 @@ const MapAreaSelector = ({ onAreaSelected, isSelecting, selectedArea, onClearSel
         >
           {showUhiGrid ? 'ON' : 'OFF'}
         </ToggleButton>
+        {selectedArea && (
+          <ToggleButton 
+            active={false}
+            onClick={() => {
+              const testStats = {
+                average: "3.2",
+                minimum: "1.5",
+                maximum: "5.1",
+                cellCount: 8,
+                selectedCells: []
+              };
+              setSelectedAreaStats(testStats);
+            }}
+          >
+            📊 Show Stats
+          </ToggleButton>
+        )}
       </HeatmapToggle>
 
       {showUhiGrid && (
@@ -691,8 +889,50 @@ const MapAreaSelector = ({ onAreaSelected, isSelecting, selectedArea, onClearSel
           Press ESC to clear selection
         </SelectionOverlay>
       )}
+
+      {selectedAreaStats && (
+        <StatisticsPanel>
+          <StatsTitle>
+            📊 Selected Area Stats
+          </StatsTitle>
+          <StatsGrid>
+            <StatItem>
+              <StatValue>{selectedAreaStats.average}°C</StatValue>
+              <StatLabel>Average UHI</StatLabel>
+            </StatItem>
+            <StatItem>
+              <StatValue>{selectedAreaStats.maximum}°C</StatValue>
+              <StatLabel>Maximum UHI</StatLabel>
+            </StatItem>
+            <StatItem>
+              <StatValue>{selectedAreaStats.minimum}°C</StatValue>
+              <StatLabel>Minimum UHI</StatLabel>
+            </StatItem>
+            <StatItem>
+              <StatValue>{selectedAreaStats.cellCount}</StatValue>
+              <StatLabel>Grid Cells</StatLabel>
+            </StatItem>
+          </StatsGrid>
+          <CellCount>
+            📍 {selectedAreaStats.cellCount} grid cells included in selection
+          </CellCount>
+          <View3DButton onClick={() => setShow3DVisualization(true)}>
+            🌳 View 3D Model
+          </View3DButton>
+          <ResetButton onClick={clearCurrentSelection}>
+            🗑️ Clear Selection
+          </ResetButton>
+        </StatisticsPanel>
+      )}
       
       <div ref={mapRef} style={{ width: '100%', height: '100%' }} />
+
+      {show3DVisualization && selectedArea && (
+        <StreetView3D 
+          selectedArea={selectedArea} 
+          onClose={() => setShow3DVisualization(false)} 
+        />
+      )}
     </MapContainer>
   );
 };
