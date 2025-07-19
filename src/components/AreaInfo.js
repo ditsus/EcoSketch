@@ -252,6 +252,29 @@ const AreaInfo = ({ selectedArea, isSelecting, onStartSelection, onClearSelectio
         )}
       </Section>
 
+      <Section>
+        <Title>🌡️ UHI Grid</Title>
+        <div style={{
+          padding: '12px',
+          backgroundColor: '#f8f9fa',
+          borderRadius: '6px',
+          fontSize: '13px',
+          lineHeight: '1.4',
+          color: '#495057'
+        }}>
+          <p><strong>Urban Heat Island (UHI)</strong> grid shows temperature intensity across Toronto.</p>
+          <p style={{ marginTop: '8px' }}>
+            <strong>White/Yellow areas:</strong> Cooler temperatures
+          </p>
+          <p style={{ marginTop: '4px' }}>
+            <strong>Red areas:</strong> Hotter temperatures
+          </p>
+          <p style={{ marginTop: '8px', fontSize: '12px', color: '#6c757d' }}>
+            Use the toggle button on the map to show/hide the UHI grid overlay.
+          </p>
+        </div>
+      </Section>
+
       {selectedArea && (
         <>
           <Section>
@@ -267,6 +290,23 @@ const AreaInfo = ({ selectedArea, isSelecting, onStartSelection, onClearSelectio
                 <InfoValue>{formatArea(selectedArea.area)}</InfoValue>
               </InfoItem>
             </InfoGrid>
+
+            {selectedArea.averageUhi && selectedArea.averageUhi > 0 && (
+              <div style={{
+                padding: '10px',
+                backgroundColor: '#fff3cd',
+                border: '1px solid #ffeaa7',
+                borderRadius: '4px',
+                marginTop: '10px'
+              }}>
+                <InfoLabel style={{ color: '#856404', marginBottom: '5px' }}>
+                  🌡️ Average UHI Intensity
+                </InfoLabel>
+                <InfoValue style={{ color: '#856404', fontSize: '16px', fontWeight: 'bold' }}>
+                  {selectedArea.averageUhi}°C hotter than rural average
+                </InfoValue>
+              </div>
+            )}
 
             {selectedArea.bounds && (
               <div>
