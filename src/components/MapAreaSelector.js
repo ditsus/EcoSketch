@@ -404,6 +404,12 @@ const MapAreaSelector = ({ onAreaSelected, isSelecting, selectedArea, onClearSel
       selectedShapeRef.current.setMap(null);
     }
 
+    // Make the shape non-editable after selection
+    shape.setOptions({
+      editable: false,
+      clickable: false
+    });
+
     selectedShapeRef.current = shape;
 
     // Calculate area and bounds
