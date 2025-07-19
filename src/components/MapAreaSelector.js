@@ -813,23 +813,6 @@ const MapAreaSelector = ({ onAreaSelected, isSelecting, selectedArea, onClearSel
         >
           {showUhiGrid ? 'ON' : 'OFF'}
         </ToggleButton>
-        {selectedArea && (
-          <ToggleButton 
-            active={false}
-            onClick={() => {
-              const testStats = {
-                average: "3.2",
-                minimum: "1.5",
-                maximum: "5.1",
-                cellCount: 8,
-                selectedCells: []
-              };
-              setSelectedAreaStats(testStats);
-            }}
-          >
-            📊 Show Stats
-          </ToggleButton>
-        )}
       </HeatmapToggle>
 
       {showUhiGrid && (

@@ -127,6 +127,59 @@ const ResetCameraButton = styled.button`
   }
 `;
 
+const StreetViewImage = styled.div`
+  position: absolute;
+  top: 80px;
+  right: 20px;
+  background: rgba(0, 0, 0, 0.8);
+  border-radius: 8px;
+  padding: 10px;
+  z-index: 2001;
+  max-width: 300px;
+`;
+
+const ImageTitle = styled.div`
+  color: white;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  text-align: center;
+`;
+
+const StreetViewImg = styled.img`
+  width: 100%;
+  max-width: 280px;
+  height: auto;
+  border-radius: 4px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+`;
+
+const LocationInfo = styled.div`
+  color: white;
+  font-size: 11px;
+  margin-top: 8px;
+  text-align: center;
+  opacity: 0.8;
+`;
+
+const ToggleImageButton = styled.button`
+  position: absolute;
+  top: 250px;
+  left: 20px;
+  background: rgba(40, 167, 69, 0.8);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  z-index: 2001;
+  
+  &:hover {
+    background: rgba(40, 167, 69, 1);
+  }
+`;
+
 const StreetView3D = ({ selectedArea, onClose }) => {
   const canvasRef = useRef(null);
   const sceneRef = useRef(null);
@@ -138,6 +191,8 @@ const StreetView3D = ({ selectedArea, onClose }) => {
   const [loadingMessage, setLoadingMessage] = useState('Initializing 3D scene...');
   const [aiSuggestion, setAiSuggestion] = useState('');
   const [currentLocation, setCurrentLocation] = useState(null);
+  const [streetViewImage, setStreetViewImage] = useState(null);
+  const [showStreetView, setShowStreetView] = useState(true);
 
   // Initialize Gemini AI
   const genAI = new GoogleGenerativeAI(process.env.REACT_APP_GEMINI_API_KEY || 'YOUR_GEMINI_API_KEY');
@@ -149,25 +204,205 @@ const StreetView3D = ({ selectedArea, onClose }) => {
     return { lat, lng };
   };
 
-  // Fetch Street View image
+  // Fetch Street View image with optimal heading
   const fetchStreetViewImage = async (lat, lng) => {
     const apiKey = process.env.REACT_APP_GOOGLE_MAPS_API_KEY || 'YOUR_API_KEY_HERE';
-    const url = `https://maps.googleapis.com/maps/api/streetview?size=640x640&location=${lat},${lng}&key=${apiKey}`;
     
+    // First, try to get the actual road direction
+    const roadDirection = await getRoadDirection(lat, lng);
+    
+    let headings = [];
+    if (roadDirection !== null) {
+      // Use road direction and nearby headings
+      const roadHeading = Math.round(roadDirection);
+      headings = [
+        roadHeading,                    // Exact road direction
+        (roadHeading + 180) % 360,     // Opposite direction
+        (roadHeading + 90) % 360,      // Perpendicular
+        (roadHeading - 90 + 360) % 360 // Other perpendicular
+      ];
+      console.log(`Using road-based headings: ${headings.join(', ')}°`);
+    } else {
+      // Fallback to cardinal directions
+      headings = [0, 90, 180, 270]; // North, East, South, West
+      console.log('No road data available, using cardinal directions');
+    }
+    
+    let bestImage = null;
+    let bestHeading = 0;
+    let bestScore = 0;
+    
+    for (const heading of headings) {
+      try {
+        const url = `https://maps.googleapis.com/maps/api/streetview?size=640x640&location=${lat},${lng}&heading=${heading}&key=${apiKey}`;
+        const response = await fetch(url);
+        
+        if (response.ok) {
+          const blob = await response.blob();
+          const imageDataUrl = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.readAsDataURL(blob);
+          });
+          
+          // Analyze the image to determine if it's looking down a street
+          const roadScore = await analyzeStreetViewQuality(imageDataUrl, heading);
+          
+          console.log(`Heading ${heading}° - Road score: ${roadScore.toFixed(3)}`);
+          
+          if (roadScore > bestScore) {
+            bestScore = roadScore;
+            bestImage = imageDataUrl;
+            bestHeading = heading;
+          }
+          
+          // If we found a very good view, stop searching
+          if (roadScore > 0.5) {
+            console.log(`Found excellent street view at heading ${heading}°`);
+            break;
+          }
+        }
+      } catch (error) {
+        console.log(`Failed to fetch Street View at heading ${heading}°:`, error);
+      }
+    }
+    
+    if (bestImage) {
+      console.log(`Using Street View at heading ${bestHeading}° (score: ${bestScore.toFixed(3)})`);
+      return bestImage;
+    } else {
+      throw new Error('Failed to fetch any Street View images');
+    }
+  };
+
+  // Analyze Street View image quality to determine if it's looking down a street
+  const analyzeStreetViewQuality = async (imageDataUrl, heading) => {
     try {
-      const response = await fetch(url);
-      if (!response.ok) throw new Error('Failed to fetch Street View');
+      // Create a temporary image to analyze
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
       
-      const blob = await response.blob();
       return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result);
-        reader.readAsDataURL(blob);
+        img.onload = () => {
+          // Create a canvas to analyze the image
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          canvas.width = img.width;
+          canvas.height = img.height;
+          ctx.drawImage(img, 0, 0);
+          
+          // Get image data for analysis
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const data = imageData.data;
+          
+          // Simple analysis: check for road-like patterns
+          // Look for horizontal lines and road-like colors in the bottom portion
+          const roadScore = analyzeRoadPattern(data, canvas.width, canvas.height);
+          
+          // Return the road score for comparison
+          console.log(`Heading ${heading}° - Road score: ${roadScore.toFixed(3)}`);
+          resolve(roadScore);
+        };
+        
+        img.onerror = () => {
+          console.log(`Failed to analyze image at heading ${heading}°`);
+          resolve(false);
+        };
+        
+        img.src = imageDataUrl;
       });
     } catch (error) {
-      console.error('Error fetching Street View:', error);
-      throw error;
+      console.error('Error analyzing Street View quality:', error);
+      return false;
     }
+  };
+
+  // Get road direction data from Google Maps Roads API
+  const getRoadDirection = async (lat, lng) => {
+    const apiKey = process.env.REACT_APP_GOOGLE_MAPS_API_KEY || 'YOUR_API_KEY_HERE';
+    
+    try {
+      // Use Roads API to get the nearest road and its direction
+      const url = `https://roads.googleapis.com/v1/nearestRoads?points=${lat},${lng}&key=${apiKey}`;
+      const response = await fetch(url);
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.snappedPoints && data.snappedPoints.length > 0) {
+          const snappedPoint = data.snappedPoints[0];
+          
+          // Get the road segment to determine direction
+          if (data.snappedPoints.length > 1) {
+            const point1 = data.snappedPoints[0];
+            const point2 = data.snappedPoints[1];
+            
+            // Calculate heading from point1 to point2
+            const heading = calculateHeading(
+              point1.location.latitude, point1.location.longitude,
+              point2.location.latitude, point2.location.longitude
+            );
+            
+            console.log(`Road direction: ${heading.toFixed(1)}°`);
+            return heading;
+          }
+        }
+      }
+    } catch (error) {
+      console.log('Failed to get road direction:', error);
+    }
+    
+    return null; // No road direction available
+  };
+
+  // Calculate heading between two points
+  const calculateHeading = (lat1, lng1, lat2, lng2) => {
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+    const lat1Rad = lat1 * Math.PI / 180;
+    const lat2Rad = lat2 * Math.PI / 180;
+    
+    const y = Math.sin(dLng) * Math.cos(lat2Rad);
+    const x = Math.cos(lat1Rad) * Math.sin(lat2Rad) - Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLng);
+    
+    let heading = Math.atan2(y, x) * 180 / Math.PI;
+    heading = (heading + 360) % 360; // Normalize to 0-360
+    
+    return heading;
+  };
+
+  // Analyze image data for road-like patterns
+  const analyzeRoadPattern = (imageData, width, height) => {
+    let roadPixels = 0;
+    let totalPixels = 0;
+    
+    // Focus on the bottom portion of the image where roads typically are
+    const startY = Math.floor(height * 0.6);
+    const endY = height;
+    
+    for (let y = startY; y < endY; y++) {
+      for (let x = 0; x < width; x++) {
+        const index = (y * width + x) * 4;
+        const r = imageData[index];
+        const g = imageData[index + 1];
+        const b = imageData[index + 2];
+        
+        // Check for road-like colors (gray, black, asphalt-like)
+        const isRoadColor = (
+          // Dark gray to black (asphalt)
+          (r < 80 && g < 80 && b < 80) ||
+          // Medium gray (concrete)
+          (Math.abs(r - g) < 20 && Math.abs(g - b) < 20 && r > 80 && r < 180) ||
+          // Light gray (pavement)
+          (Math.abs(r - g) < 15 && Math.abs(g - b) < 15 && r > 150 && r < 220)
+        );
+        
+        if (isRoadColor) {
+          roadPixels++;
+        }
+        totalPixels++;
+      }
+    }
+    
+    return totalPixels > 0 ? roadPixels / totalPixels : 0;
   };
 
   // Analyze image with Gemini AI
@@ -508,6 +743,7 @@ const StreetView3D = ({ selectedArea, onClose }) => {
       
       setLoadingMessage('Fetching Street View image...');
       const imageDataUrl = await fetchStreetViewImage(randomPoint.lat, randomPoint.lng);
+      setStreetViewImage(imageDataUrl);
       
       setLoadingMessage('Analyzing with AI...');
       const aiAnalysis = await analyzeImageWithAI(imageDataUrl);
@@ -588,6 +824,22 @@ const StreetView3D = ({ selectedArea, onClose }) => {
         <ResetCameraButton onClick={resetCamera}>
           📷 Reset Camera
         </ResetCameraButton>
+        
+        <ToggleImageButton onClick={() => setShowStreetView(!showStreetView)}>
+          {showStreetView ? '📸 Hide Image' : '📸 Show Image'}
+        </ToggleImageButton>
+        
+        {streetViewImage && showStreetView && (
+          <StreetViewImage>
+            <ImageTitle>📸 Original Street View</ImageTitle>
+            <StreetViewImg src={streetViewImage} alt="Street View" />
+            {currentLocation && (
+              <LocationInfo>
+                📍 {currentLocation.lat.toFixed(4)}, {currentLocation.lng.toFixed(4)}
+              </LocationInfo>
+            )}
+          </StreetViewImage>
+        )}
         
         {aiSuggestion && (
           <AISuggestion>
