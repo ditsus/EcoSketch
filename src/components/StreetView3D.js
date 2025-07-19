@@ -180,6 +180,103 @@ const ToggleImageButton = styled.button`
   }
 `;
 
+const LocationSelector = styled.div`
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(0, 0, 0, 0.9);
+  color: white;
+  padding: 20px;
+  border-radius: 12px;
+  z-index: 2003;
+  text-align: center;
+  min-width: 300px;
+`;
+
+const CoordinateInput = styled.div`
+  display: flex;
+  gap: 15px;
+  margin: 20px 0;
+  justify-content: center;
+  align-items: center;
+`;
+
+const InputGroup = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+`;
+
+const InputLabel = styled.label`
+  font-size: 12px;
+  color: #ccc;
+  font-weight: 600;
+`;
+
+const CoordinateInputField = styled.input`
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+  color: white;
+  padding: 8px 12px;
+  font-size: 14px;
+  width: 120px;
+  text-align: center;
+  
+  &:focus {
+    outline: none;
+    border-color: #007bff;
+    background: rgba(255, 255, 255, 0.15);
+  }
+  
+  &::placeholder {
+    color: rgba(255, 255, 255, 0.5);
+  }
+`;
+
+const BoundsInfo = styled.div`
+  background: rgba(255, 255, 255, 0.1);
+  padding: 10px;
+  border-radius: 6px;
+  margin: 15px 0;
+  font-size: 12px;
+  line-height: 1.4;
+`;
+
+const SelectionInstructions = styled.div`
+  font-size: 14px;
+  margin-bottom: 15px;
+  line-height: 1.4;
+`;
+
+const ButtonGroup = styled.div`
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 15px;
+`;
+
+const SelectButton = styled.button`
+  background: ${props => props.primary ? '#007bff' : '#6c757d'};
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 10px 16px;
+  font-size: 14px;
+  cursor: pointer;
+  
+  &:hover {
+    background: ${props => props.primary ? '#0056b3' : '#545b62'};
+  }
+  
+  &:disabled {
+    background: #6c757d;
+    cursor: not-allowed;
+  }
+`;
+
 const StreetView3D = ({ selectedArea, onClose }) => {
   const canvasRef = useRef(null);
   const sceneRef = useRef(null);
@@ -193,6 +290,7 @@ const StreetView3D = ({ selectedArea, onClose }) => {
   const [currentLocation, setCurrentLocation] = useState(null);
   const [streetViewImage, setStreetViewImage] = useState(null);
   const [showStreetView, setShowStreetView] = useState(true);
+  const [isSelectingLocation, setIsSelectingLocation] = useState(false);
 
   // Initialize Gemini AI
   const genAI = new GoogleGenerativeAI(process.env.REACT_APP_GEMINI_API_KEY || 'YOUR_GEMINI_API_KEY');
@@ -720,12 +818,66 @@ const StreetView3D = ({ selectedArea, onClose }) => {
     }
   };
 
+  // Generate random location within selected area
+  const generateRandomLocation = () => {
+    const bounds = selectedArea.bounds;
+    const lat = bounds.south + Math.random() * (bounds.north - bounds.south);
+    const lng = bounds.west + Math.random() * (bounds.east - bounds.west);
+    return { lat, lng };
+  };
+
+  // Handle manual coordinate input
+  const handleCoordinateInput = (type, value) => {
+    const numValue = parseFloat(value);
+    if (isNaN(numValue)) return;
+    
+    const bounds = selectedArea.bounds;
+    let newLocation = { ...currentLocation } || generateRandomLocation();
+    
+    if (type === 'lat') {
+      // Ensure latitude is within bounds
+      newLocation.lat = Math.max(bounds.south, Math.min(bounds.north, numValue));
+    } else if (type === 'lng') {
+      // Ensure longitude is within bounds
+      newLocation.lng = Math.max(bounds.west, Math.min(bounds.east, numValue));
+    }
+    
+    setCurrentLocation(newLocation);
+  };
+
   // Reset camera to default position
   const resetCamera = () => {
     if (cameraRef.current && controlsRef.current) {
       cameraRef.current.position.set(0, 5, 10);
       cameraRef.current.lookAt(0, 0, 0);
       controlsRef.current.reset();
+    }
+  };
+
+  // Load Street View and generate 3D model for a specific location
+  const loadViewForLocation = async (location) => {
+    if (!location) return;
+    
+    setIsLoading(true);
+    setLoadingMessage('Fetching Street View image...');
+    
+    try {
+      const imageDataUrl = await fetchStreetViewImage(location.lat, location.lng);
+      setStreetViewImage(imageDataUrl);
+      
+      setLoadingMessage('Analyzing with AI...');
+      const aiAnalysis = await analyzeImageWithAI(imageDataUrl);
+      
+      setLoadingMessage('Building 3D model...');
+      build3DModel(aiAnalysis);
+      
+      setAiSuggestion(aiAnalysis.suggested_changes);
+      setIsLoading(false);
+      
+    } catch (error) {
+      console.error('Error loading view for location:', error);
+      setLoadingMessage('Error loading view. Please try again.');
+      setIsLoading(false);
     }
   };
 
@@ -741,18 +893,7 @@ const StreetView3D = ({ selectedArea, onClose }) => {
       const randomPoint = generateRandomPoint(selectedArea.bounds);
       setCurrentLocation(randomPoint);
       
-      setLoadingMessage('Fetching Street View image...');
-      const imageDataUrl = await fetchStreetViewImage(randomPoint.lat, randomPoint.lng);
-      setStreetViewImage(imageDataUrl);
-      
-      setLoadingMessage('Analyzing with AI...');
-      const aiAnalysis = await analyzeImageWithAI(imageDataUrl);
-      
-      setLoadingMessage('Building 3D model...');
-      build3DModel(aiAnalysis);
-      
-      setAiSuggestion(aiAnalysis.suggested_changes);
-      setIsLoading(false);
+      await loadViewForLocation(randomPoint);
       
     } catch (error) {
       console.error('Error loading new view:', error);
@@ -790,6 +931,8 @@ const StreetView3D = ({ selectedArea, onClose }) => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+
+
   if (!selectedArea) return null;
 
   return (
@@ -797,8 +940,11 @@ const StreetView3D = ({ selectedArea, onClose }) => {
       <Header>
         <h2>🌳 3D Urban Heat Island Reduction Model</h2>
         <Controls>
+          <ActionButton onClick={() => setIsSelectingLocation(true)} disabled={isLoading}>
+            📍 Select Location
+          </ActionButton>
           <ActionButton onClick={loadNewView} disabled={isLoading}>
-            🔄 Load Another View
+            🔄 Random View
           </ActionButton>
           <CloseButton onClick={onClose}>✕ Close</CloseButton>
         </Controls>
@@ -811,6 +957,81 @@ const StreetView3D = ({ selectedArea, onClose }) => {
           <LoadingOverlay>
             <div>{loadingMessage}</div>
           </LoadingOverlay>
+        )}
+
+        {isSelectingLocation && (
+          <LocationSelector>
+            <h3>📍 Select Street View Location</h3>
+            <SelectionInstructions>
+              Enter coordinates or use the random generator to select a location within your selected area.
+            </SelectionInstructions>
+            
+            <BoundsInfo>
+              <strong>Selected Area Bounds:</strong><br/>
+              North: {selectedArea.bounds.north.toFixed(4)} | South: {selectedArea.bounds.south.toFixed(4)}<br/>
+              East: {selectedArea.bounds.east.toFixed(4)} | West: {selectedArea.bounds.west.toFixed(4)}
+            </BoundsInfo>
+            
+            <CoordinateInput>
+              <InputGroup>
+                <InputLabel>Latitude</InputLabel>
+                <CoordinateInputField
+                  type="number"
+                  step="0.0001"
+                  placeholder="43.6532"
+                  value={currentLocation?.lat?.toFixed(4) || ''}
+                  onChange={(e) => handleCoordinateInput('lat', e.target.value)}
+                />
+              </InputGroup>
+              
+              <InputGroup>
+                <InputLabel>Longitude</InputLabel>
+                <CoordinateInputField
+                  type="number"
+                  step="0.0001"
+                  placeholder="-79.3832"
+                  value={currentLocation?.lng?.toFixed(4) || ''}
+                  onChange={(e) => handleCoordinateInput('lng', e.target.value)}
+                />
+              </InputGroup>
+            </CoordinateInput>
+            
+            <ButtonGroup>
+              <SelectButton onClick={() => {
+                const randomLoc = generateRandomLocation();
+                setCurrentLocation(randomLoc);
+              }}>
+                🎲 Random Location
+              </SelectButton>
+            </ButtonGroup>
+            
+            <ButtonGroup>
+              <SelectButton 
+                primary 
+                onClick={() => {
+                  if (currentLocation) {
+                    setIsSelectingLocation(false);
+                    loadViewForLocation(currentLocation);
+                  }
+                }}
+                disabled={!currentLocation}
+              >
+                🚀 Generate 3D Model
+              </SelectButton>
+              <SelectButton onClick={() => {
+                setIsSelectingLocation(false);
+                setCurrentLocation(null);
+              }}>
+                ❌ Cancel
+              </SelectButton>
+            </ButtonGroup>
+            
+            {currentLocation && (
+              <div style={{ marginTop: '10px', fontSize: '12px', opacity: 0.8 }}>
+                Selected: {currentLocation.lat.toFixed(4)}, {currentLocation.lng.toFixed(4)}
+              </div>
+            )}
+          </LocationSelector>
         )}
         
         <ControlsInfo>
