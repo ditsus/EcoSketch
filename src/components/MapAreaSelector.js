@@ -494,7 +494,70 @@ const MapAreaSelector = ({ onAreaSelected, isSelecting, selectedArea, onClearSel
       }
     });
 
+    // If no overlapping cells found, try a different approach for small selections
+    if (overlappingCells === 0) {
+      // For very small selections, find the nearest grid cell
+      const shapeCenter = getShapeCenter(shape, type);
+      if (shapeCenter) {
+        const nearestCell = findNearestGridCell(shapeCenter, gridData);
+        if (nearestCell) {
+          return nearestCell.intensity.toFixed(1);
+        }
+      }
+    }
+
     return overlappingCells > 0 ? (totalIntensity / overlappingCells).toFixed(1) : 0;
+  };
+
+  // Get the center point of a shape
+  const getShapeCenter = (shape, type) => {
+    if (type === 'circle') {
+      return shape.getCenter();
+    } else if (type === 'rectangle') {
+      const bounds = shape.getBounds();
+      return new google.maps.LatLng(
+        (bounds.getNorthEast().lat() + bounds.getSouthWest().lat()) / 2,
+        (bounds.getNorthEast().lng() + bounds.getSouthWest().lng()) / 2
+      );
+    } else if (type === 'polygon') {
+      const path = shape.getPath();
+      let totalLat = 0, totalLng = 0;
+      const numPoints = path.getLength();
+      
+      for (let i = 0; i < numPoints; i++) {
+        const point = path.getAt(i);
+        totalLat += point.lat();
+        totalLng += point.lng();
+      }
+      
+      return new google.maps.LatLng(totalLat / numPoints, totalLng / numPoints);
+    }
+    return null;
+  };
+
+  // Find the nearest grid cell to a point
+  const findNearestGridCell = (center, gridData) => {
+    let nearestCell = null;
+    let minDistance = Infinity;
+
+    gridData.forEach(cell => {
+      const cellCenter = {
+        lat: (cell.paths[0].lat + cell.paths[2].lat) / 2,
+        lng: (cell.paths[0].lng + cell.paths[2].lng) / 2
+      };
+      
+      const distance = Math.sqrt(
+        Math.pow(center.lat() - cellCenter.lat, 2) + 
+        Math.pow(center.lng() - cellCenter.lng, 2)
+      );
+      
+      if (distance < minDistance) {
+        minDistance = distance;
+        nearestCell = cell;
+      }
+    });
+
+    return nearestCell;
   };
 
   const clearCurrentSelection = () => {
