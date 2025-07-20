@@ -261,95 +261,210 @@ const StreetView3D = ({ selectedArea, onClose }) => {
       return;
     }
 
-    // Generate road if detected
+    // Helper function to get building color from description
+    const getBuildingColor = (colorDesc) => {
+      const colorMap = {
+        'red': 0x8B0000, 'brick': 0x8B0000, 'brown': 0x8B4513, 'tan': 0xD2B48C,
+        'gray': 0x696969, 'grey': 0x696969, 'white': 0xFFFFFF, 'cream': 0xF5F5DC,
+        'blue': 0x4169E1, 'green': 0x228B22, 'yellow': 0xFFD700, 'orange': 0xFFA500,
+        'black': 0x000000, 'dark': 0x2F4F4F, 'light': 0xD3D3D3
+      };
+      
+      for (const [key, color] of Object.entries(colorMap)) {
+        if (colorDesc.toLowerCase().includes(key)) {
+          return color;
+        }
+      }
+      return 0x8B4513; // Default brown
+    };
+
+    // Helper function to get building height from description
+    const getBuildingHeight = (heightDesc) => {
+      const heightMap = {
+        'low': 2 + Math.random() * 1,      // 2-3 units
+        'medium': 3 + Math.random() * 2,   // 3-5 units
+        'high': 5 + Math.random() * 3,     // 5-8 units
+        'tall': 8 + Math.random() * 4      // 8-12 units
+      };
+      
+      for (const [key, height] of Object.entries(heightMap)) {
+        if (heightDesc.toLowerCase().includes(key)) {
+          return height;
+        }
+      }
+      return 3 + Math.random() * 2; // Default medium
+    };
+
+    // Generate road based on detailed data
     if (geminiData.has_road) {
-      const roadGeometry = new THREE.PlaneGeometry(12, 2);
+      const roadWidth = geminiData.road_width === 'wide' ? 3 : geminiData.road_width === 'narrow' ? 1.5 : 2;
+      const roadLanes = geminiData.road_lanes || 2;
+      
+      const roadGeometry = new THREE.PlaneGeometry(12, roadWidth);
       const roadMaterial = new THREE.MeshLambertMaterial({ color: 0x2C2C2C });
       const road = new THREE.Mesh(roadGeometry, roadMaterial);
       road.rotation.x = -Math.PI / 2;
       road.position.set(0, 0.01, 0);
       scene.add(road);
       
-      // Add road markings (center line)
-      const markingGeometry = new THREE.PlaneGeometry(0.15, 1.8);
-      const markingMaterial = new THREE.MeshLambertMaterial({ color: 0xFFFFFF });
-      const marking = new THREE.Mesh(markingGeometry, markingMaterial);
-      marking.rotation.x = -Math.PI / 2;
-      marking.position.set(0, 0.02, 0);
-      scene.add(marking);
-      
-      // Add side lines
-      const sideMarking1 = new THREE.Mesh(markingGeometry, markingMaterial);
-      sideMarking1.rotation.x = -Math.PI / 2;
-      sideMarking1.position.set(-0.8, 0.02, 0);
-      scene.add(sideMarking1);
-      
-      const sideMarking2 = new THREE.Mesh(markingGeometry, markingMaterial);
-      sideMarking2.rotation.x = -Math.PI / 2;
-      sideMarking2.position.set(0.8, 0.02, 0);
-      scene.add(sideMarking2);
+      // Add lane markings based on number of lanes
+      if (roadLanes >= 2) {
+        const markingGeometry = new THREE.PlaneGeometry(0.15, roadWidth * 0.8);
+        const markingMaterial = new THREE.MeshLambertMaterial({ color: 0xFFFFFF });
+        
+        // Center line
+        const centerMarking = new THREE.Mesh(markingGeometry, markingMaterial);
+        centerMarking.rotation.x = -Math.PI / 2;
+        centerMarking.position.set(0, 0.02, 0);
+        scene.add(centerMarking);
+        
+        // Side lines
+        const sideMarking1 = new THREE.Mesh(markingGeometry, markingMaterial);
+        sideMarking1.rotation.x = -Math.PI / 2;
+        sideMarking1.position.set(-roadWidth * 0.4, 0.02, 0);
+        scene.add(sideMarking1);
+        
+        const sideMarking2 = new THREE.Mesh(markingGeometry, markingMaterial);
+        sideMarking2.rotation.x = -Math.PI / 2;
+        sideMarking2.position.set(roadWidth * 0.4, 0.02, 0);
+        scene.add(sideMarking2);
+      }
     }
 
-    // Generate sidewalk if detected
+    // Generate sidewalk based on detailed data
     if (geminiData.has_sidewalk) {
-      const sidewalkGeometry = new THREE.PlaneGeometry(1.5, 12);
+      const sidewalkWidth = geminiData.sidewalk_width === 'wide' ? 2 : geminiData.sidewalk_width === 'narrow' ? 1 : 1.5;
+      const sidewalkGeometry = new THREE.PlaneGeometry(sidewalkWidth, 12);
       const sidewalkMaterial = new THREE.MeshLambertMaterial({ color: 0xD3D3D3 });
+      
       const sidewalk = new THREE.Mesh(sidewalkGeometry, sidewalkMaterial);
       sidewalk.rotation.x = -Math.PI / 2;
-      sidewalk.position.set(-2.5, 0.01, 0);
+      sidewalk.position.set(-2.5 - sidewalkWidth * 0.5, 0.01, 0);
       scene.add(sidewalk);
       
       const sidewalk2 = new THREE.Mesh(sidewalkGeometry, sidewalkMaterial);
       sidewalk2.rotation.x = -Math.PI / 2;
-      sidewalk2.position.set(2.5, 0.01, 0);
+      sidewalk2.position.set(2.5 + sidewalkWidth * 0.5, 0.01, 0);
       scene.add(sidewalk2);
     }
 
-    // Generate buildings based on Gemini data
-    if (geminiData.has_building) {
-      const buildingCount = geminiData.building_count || 1;
-      const buildingColors = [0x8B4513, 0x696969, 0x708090, 0x556B2F, 0x2F4F4F];
-      
-      for (let i = 0; i < buildingCount; i++) {
-        const height = 3 + Math.random() * 4; // 3-7 units tall
-        const width = 1.5 + Math.random() * 1; // 1.5-2.5 units wide
-        const depth = 1.5 + Math.random() * 1; // 1.5-2.5 units deep
+    // Generate buildings based on detailed building data
+    if (geminiData.has_building && geminiData.building_details) {
+      geminiData.building_details.forEach((building, index) => {
+        const height = getBuildingHeight(building.height);
+        const width = building.style === 'apartment' ? 2.5 : 1.5 + Math.random() * 1;
+        const depth = building.style === 'apartment' ? 2.5 : 1.5 + Math.random() * 1;
+        const color = getBuildingColor(building.color);
+        
+        // Position based on building position description
+        let xPos = 0;
+        if (building.position === 'left') xPos = -4 - index * 2;
+        else if (building.position === 'right') xPos = 4 + index * 2;
+        else xPos = -2 + index * 3; // center
         
         const buildingGeometry = new THREE.BoxGeometry(width, height, depth);
-        const buildingMaterial = new THREE.MeshLambertMaterial({ 
-          color: buildingColors[i % buildingColors.length]
-        });
+        const buildingMaterial = new THREE.MeshLambertMaterial({ color });
+        const buildingMesh = new THREE.Mesh(buildingGeometry, buildingMaterial);
+        buildingMesh.position.set(xPos, height / 2, -3);
+        buildingMesh.castShadow = true;
+        scene.add(buildingMesh);
+        
+        // Add windows based on window description
+        if (building.windows !== 'none') {
+          const windowCount = building.windows === 'many' ? 3 : building.windows === 'few' ? 1 : 2;
+          const windowGeometry = new THREE.PlaneGeometry(0.3, 0.4);
+          const windowMaterial = new THREE.MeshLambertMaterial({ color: 0x87CEEB });
+          
+          for (let j = 0; j < Math.floor(height / 1.5); j++) {
+            for (let k = 0; k < windowCount; k++) {
+              const window = new THREE.Mesh(windowGeometry, windowMaterial);
+              window.position.set(
+                xPos + (k - (windowCount - 1) / 2) * 0.4, 
+                1 + j * 1.5, 
+                -3 + depth / 2 + 0.01
+              );
+              scene.add(window);
+            }
+          }
+        }
+        
+        // Add roof based on roof type
+        if (building.roof_type === 'pitched') {
+          const roofGeometry = new THREE.ConeGeometry(width * 0.7, 1, 4);
+          const roofMaterial = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
+          const roof = new THREE.Mesh(roofGeometry, roofMaterial);
+          roof.position.set(xPos, height + 0.5, -3);
+          roof.castShadow = true;
+          scene.add(roof);
+        }
+      });
+    } else if (geminiData.has_building) {
+      // Fallback for basic building data
+      const buildingCount = geminiData.building_count || 1;
+      for (let i = 0; i < buildingCount; i++) {
+        const height = 3 + Math.random() * 4;
+        const width = 1.5 + Math.random() * 1;
+        const depth = 1.5 + Math.random() * 1;
+        
+        const buildingGeometry = new THREE.BoxGeometry(width, height, depth);
+        const buildingMaterial = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
         const building = new THREE.Mesh(buildingGeometry, buildingMaterial);
         building.position.set(-4 + i * 3, height / 2, -3);
         building.castShadow = true;
         scene.add(building);
-        
-        // Add windows to buildings
-        const windowGeometry = new THREE.PlaneGeometry(0.3, 0.4);
-        const windowMaterial = new THREE.MeshLambertMaterial({ color: 0x87CEEB });
-        
-        // Front windows
-        for (let j = 0; j < Math.floor(height / 1.5); j++) {
-          for (let k = 0; k < 2; k++) {
-            const window = new THREE.Mesh(windowGeometry, windowMaterial);
-            window.position.set(
-              -4 + i * 3 + (k - 0.5) * 0.4, 
-              1 + j * 1.5, 
-              -3 + depth / 2 + 0.01
-            );
-            scene.add(window);
-          }
-        }
       }
     }
 
-    // Generate trees based on Gemini data
-    if (geminiData.add_trees) {
-      const treeCount = geminiData.tree_count || 2;
-      const treeColors = [0x228B22, 0x32CD32, 0x006400, 0x228B22];
-      
-      for (let i = 0; i < treeCount; i++) {
+    // Generate trees based on detailed tree data
+    if (geminiData.add_trees && geminiData.tree_details) {
+      geminiData.tree_details.forEach((tree, index) => {
+        const treeSize = tree.size === 'large' ? 1.5 : tree.size === 'small' ? 0.8 : 1.2;
+        const treeType = tree.type || 'deciduous';
+        const treeColor = treeType === 'evergreen' ? 0x006400 : treeType === 'palm' ? 0x228B22 : 0x32CD32;
+        
+        // Position based on tree position description
+        let xPos = 0, zPos = 0;
+        if (tree.position === 'sidewalk') {
+          xPos = index % 2 === 0 ? -3 : 3;
+          zPos = index * 2 - 4;
+        } else if (tree.position === 'median') {
+          xPos = 0;
+          zPos = index * 2 - 4;
+        } else {
+          xPos = -6 + index * 2.5;
+          zPos = 3;
+        }
+        
         // Tree trunk
+        const trunkHeight = treeSize * 2.5;
+        const trunkGeometry = new THREE.CylinderGeometry(0.15 * treeSize, 0.2 * treeSize, trunkHeight);
+        const trunkMaterial = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
+        const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
+        trunk.position.set(xPos, trunkHeight / 2, zPos);
+        trunk.castShadow = true;
+        scene.add(trunk);
+        
+        // Tree leaves
+        const leavesGeometry = new THREE.SphereGeometry(treeSize, 8, 8);
+        const leavesMaterial = new THREE.MeshLambertMaterial({ color: treeColor });
+        const leaves = new THREE.Mesh(leavesGeometry, leavesMaterial);
+        leaves.position.set(xPos, trunkHeight + treeSize * 0.5, zPos);
+        leaves.castShadow = true;
+        scene.add(leaves);
+        
+        // Additional foliage for larger trees
+        if (treeSize > 1) {
+          const leaves2 = new THREE.Mesh(leavesGeometry, leavesMaterial);
+          leaves2.position.set(xPos + 0.3, trunkHeight + treeSize * 0.8, zPos + 0.2);
+          leaves2.scale.set(0.8, 0.8, 0.8);
+          leaves2.castShadow = true;
+          scene.add(leaves2);
+        }
+      });
+    } else if (geminiData.add_trees) {
+      // Fallback for basic tree data
+      const treeCount = geminiData.tree_count || 2;
+      for (let i = 0; i < treeCount; i++) {
         const trunkGeometry = new THREE.CylinderGeometry(0.15, 0.2, 2.5);
         const trunkMaterial = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
         const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
@@ -357,29 +472,52 @@ const StreetView3D = ({ selectedArea, onClose }) => {
         trunk.castShadow = true;
         scene.add(trunk);
         
-        // Tree leaves (multiple spheres for more realistic look)
-        const leafColor = treeColors[i % treeColors.length];
-        const leavesMaterial = new THREE.MeshLambertMaterial({ color: leafColor });
-        
-        // Main foliage
         const leavesGeometry = new THREE.SphereGeometry(1, 8, 8);
+        const leavesMaterial = new THREE.MeshLambertMaterial({ color: 0x228B22 });
         const leaves = new THREE.Mesh(leavesGeometry, leavesMaterial);
         leaves.position.set(-6 + i * 2.5, 3.5, 3);
         leaves.castShadow = true;
         scene.add(leaves);
-        
-        // Additional foliage layers
-        const leaves2 = new THREE.Mesh(leavesGeometry, leavesMaterial);
-        leaves2.position.set(-6 + i * 2.5 + 0.3, 3.8, 3 + 0.2);
-        leaves2.scale.set(0.8, 0.8, 0.8);
-        leaves2.castShadow = true;
-        scene.add(leaves2);
       }
     }
 
-    // Add suggested improvements if recommended
+    // Add street features based on detailed data
+    if (geminiData.street_features) {
+      geminiData.street_features.forEach((feature, index) => {
+        if (feature === 'street_lights') {
+          const poleGeometry = new THREE.CylinderGeometry(0.05, 0.05, 4);
+          const poleMaterial = new THREE.MeshLambertMaterial({ color: 0x696969 });
+          const pole = new THREE.Mesh(poleGeometry, poleMaterial);
+          pole.position.set(-3 + index * 6, 2, 1.5);
+          pole.castShadow = true;
+          scene.add(pole);
+          
+          const lightGeometry = new THREE.SphereGeometry(0.2, 8, 8);
+          const lightMaterial = new THREE.MeshLambertMaterial({ color: 0xFFFF00 });
+          const light = new THREE.Mesh(lightGeometry, lightMaterial);
+          light.position.set(-3 + index * 6, 4.2, 1.5);
+          light.castShadow = true;
+          scene.add(light);
+        } else if (feature === 'parking_meters') {
+          const meterGeometry = new THREE.BoxGeometry(0.1, 1.5, 0.1);
+          const meterMaterial = new THREE.MeshLambertMaterial({ color: 0x4169E1 });
+          const meter = new THREE.Mesh(meterGeometry, meterMaterial);
+          meter.position.set(-2 + index * 2, 0.75, 1.2);
+          meter.castShadow = true;
+          scene.add(meter);
+        } else if (feature === 'benches') {
+          const benchGeometry = new THREE.BoxGeometry(1.5, 0.3, 0.5);
+          const benchMaterial = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
+          const bench = new THREE.Mesh(benchGeometry, benchMaterial);
+          bench.position.set(-2 + index * 3, 0.15, 1.5);
+          bench.castShadow = true;
+          scene.add(bench);
+        }
+      });
+    }
+
+    // Add suggested improvements
     if (geminiData.suggested_changes && geminiData.suggested_changes.toLowerCase().includes('tree')) {
-      // Add additional trees as suggested improvements (in different locations)
       for (let i = 0; i < 3; i++) {
         const trunkGeometry = new THREE.CylinderGeometry(0.15, 0.2, 2.5);
         const trunkMaterial = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
@@ -395,24 +533,6 @@ const StreetView3D = ({ selectedArea, onClose }) => {
         leaves.castShadow = true;
         scene.add(leaves);
       }
-    }
-
-    // Add some decorative elements
-    // Street lights
-    for (let i = 0; i < 2; i++) {
-      const poleGeometry = new THREE.CylinderGeometry(0.05, 0.05, 4);
-      const poleMaterial = new THREE.MeshLambertMaterial({ color: 0x696969 });
-      const pole = new THREE.Mesh(poleGeometry, poleMaterial);
-      pole.position.set(-3 + i * 6, 2, 1.5);
-      pole.castShadow = true;
-      scene.add(pole);
-      
-      const lightGeometry = new THREE.SphereGeometry(0.2, 8, 8);
-      const lightMaterial = new THREE.MeshLambertMaterial({ color: 0xFFFF00 });
-      const light = new THREE.Mesh(lightGeometry, lightMaterial);
-      light.position.set(-3 + i * 6, 4.2, 1.5);
-      light.castShadow = true;
-      scene.add(light);
     }
   };
 
@@ -471,7 +591,8 @@ const StreetView3D = ({ selectedArea, onClose }) => {
       const genAI = new GoogleGenerativeAI(process.env.REACT_APP_GEMINI_API_KEY);
       const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-      const prompt = `Analyze this urban street image and describe what's present. Return a JSON object with the following structure:
+      const prompt = `Analyze this urban street image in detail and return a comprehensive JSON object describing the scene for 3D model generation:
+
       {
         "has_road": boolean,
         "has_sidewalk": boolean,
@@ -480,11 +601,35 @@ const StreetView3D = ({ selectedArea, onClose }) => {
         "building_count": number,
         "tree_count": number,
         "road_type": string,
+        "road_width": string,
+        "road_lanes": number,
+        "sidewalk_width": string,
+        "building_details": [
+          {
+            "position": "left|right|center",
+            "height": "low|medium|high|tall",
+            "style": "residential|commercial|industrial|apartment",
+            "color": "description",
+            "windows": "many|few|none",
+            "roof_type": "flat|pitched|modern"
+          }
+        ],
+        "tree_details": [
+          {
+            "position": "sidewalk|median|yard",
+            "size": "small|medium|large",
+            "type": "deciduous|evergreen|palm",
+            "density": "sparse|moderate|dense"
+          }
+        ],
+        "street_features": ["street_lights", "parking_meters", "benches", "bike_lanes", "bus_stops"],
+        "building_materials": ["brick", "concrete", "glass", "wood", "metal"],
         "suggested_changes": string,
-        "analysis": string
+        "analysis": string,
+        "scene_composition": "description of overall layout and positioning"
       }
       
-      Focus on urban heat island reduction opportunities. If you see concrete/asphalt with no trees, suggest adding trees. If you see buildings without green roofs, suggest rooftop gardens.`;
+      Be very specific about building positions, heights, styles, and materials. Describe the exact layout as if you're creating a 3D model. Focus on urban heat island reduction opportunities.`;
 
       // Ensure we have a valid base64 image
       if (!base64Image || typeof base64Image !== 'string') {
@@ -504,21 +649,46 @@ const StreetView3D = ({ selectedArea, onClose }) => {
       const response = await result.response;
       const text = response.text();
       
-      // Parse JSON response
+            // Parse JSON response - handle both single and double quotes
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
-        const geminiResponse = JSON.parse(jsonMatch[0]);
-        setGeminiData(geminiResponse);
+        let jsonString = jsonMatch[0];
         
-        const analysis = `Location Analysis for ${area.point?.areaName || 'Selected Point'}:
+        // Convert single quotes to double quotes for valid JSON
+        jsonString = jsonString.replace(/'/g, '"');
         
+        // Handle unquoted property names
+        jsonString = jsonString.replace(/(\w+):/g, '"$1":');
+        
+        try {
+          const geminiResponse = JSON.parse(jsonString);
+          setGeminiData(geminiResponse);
+          
+          const analysis = `Location Analysis for ${area.point?.areaName || 'Selected Point'}:
+          
 🌡️ UHI Intensity: ${area.point?.uhiIntensity || 'N/A'}°C hotter than rural average
 
 🏗️ Urban Elements Detected:
-${geminiResponse.has_road ? '• Road present' : '• No road detected'}
-${geminiResponse.has_sidewalk ? '• Sidewalk present' : '• No sidewalk detected'}
+${geminiResponse.has_road ? `• Road: ${geminiResponse.road_type || 'standard'} (${geminiResponse.road_lanes || 2} lanes)` : '• No road detected'}
+${geminiResponse.has_sidewalk ? `• Sidewalk: ${geminiResponse.sidewalk_width || 'standard'} width` : '• No sidewalk detected'}
 ${geminiResponse.has_building ? `• ${geminiResponse.building_count || 1} building(s) present` : '• No buildings detected'}
 ${geminiResponse.add_trees ? `• ${geminiResponse.tree_count || 0} tree(s) present` : '• No trees detected'}
+
+${geminiResponse.building_details ? `🏢 Building Details:
+${geminiResponse.building_details.map((b, i) => 
+  `  ${i+1}. ${b.style} building (${b.height}, ${b.color}, ${b.windows} windows)`
+).join('\n')}` : ''}
+
+${geminiResponse.tree_details ? `🌳 Tree Details:
+${geminiResponse.tree_details.map((t, i) => 
+  `  ${i+1}. ${t.size} ${t.type} tree in ${t.position}`
+).join('\n')}` : ''}
+
+${geminiResponse.street_features ? `🛣️ Street Features:
+• ${geminiResponse.street_features.join(', ')}` : ''}
+
+${geminiResponse.scene_composition ? `🎨 Scene Layout:
+${geminiResponse.scene_composition}` : ''}
 
 🌱 AI Recommendations:
 ${geminiResponse.suggested_changes || 'No specific recommendations available'}
@@ -526,8 +696,13 @@ ${geminiResponse.suggested_changes || 'No specific recommendations available'}
 📊 Analysis:
 ${geminiResponse.analysis || 'Analysis not available'}`;
 
-        setGeminiAnalysis(analysis);
-        return geminiResponse;
+          setGeminiAnalysis(analysis);
+          return geminiResponse;
+        } catch (parseError) {
+          console.error('Error parsing JSON from Gemini:', parseError);
+          console.log('Raw JSON string:', jsonString);
+          throw new Error('Invalid JSON format in Gemini response');
+        }
       } else {
         throw new Error('No JSON found in Gemini response');
       }
