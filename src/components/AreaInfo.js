@@ -167,9 +167,9 @@ const AreaInfo = ({ selectedArea, isSelecting, onStartSelection, onClearSelectio
     }
   };
   const getStatusText = () => {
-    if (isSelecting) return 'Selecting area...';
-    if (selectedArea) return 'Area selected';
-    return 'No area selected';
+    if (isSelecting) return 'Selecting point...';
+    if (selectedArea) return selectedArea.type === 'point' ? 'Point selected' : 'Area selected';
+    return 'No selection';
   };
 
   const getStatusClass = () => {
@@ -187,6 +187,7 @@ const AreaInfo = ({ selectedArea, isSelecting, onStartSelection, onClearSelectio
   };
 
   const formatArea = (area) => {
+    if (!area || area === undefined) return 'N/A';
     if (area < 1) {
       return `${(area * 1000000).toFixed(2)} m²`;
     } else if (area < 100) {
@@ -211,7 +212,7 @@ const AreaInfo = ({ selectedArea, isSelecting, onStartSelection, onClearSelectio
           onClick={handleStartSelection}
           disabled={isSelecting}
         >
-          {isSelecting ? 'Selecting...' : selectedArea ? 'Start New Selection' : 'Start Area Selection'}
+          {isSelecting ? 'Selecting...' : selectedArea ? 'Start New Selection' : 'Start Point Selection'}
         </Button>
 
         {selectedArea && (
@@ -233,7 +234,7 @@ const AreaInfo = ({ selectedArea, isSelecting, onStartSelection, onClearSelectio
             fontSize: '14px',
             textAlign: 'center'
           }}>
-            Area selection cleared!
+            Selection cleared!
           </div>
         )}
 
@@ -278,20 +279,42 @@ const AreaInfo = ({ selectedArea, isSelecting, onStartSelection, onClearSelectio
       {selectedArea && (
         <>
           <Section>
-            <Title>Area Details</Title>
+            <Title>{selectedArea.type === 'point' ? 'Point Details' : 'Area Details'}</Title>
             
             <InfoGrid>
               <InfoItem>
                 <InfoLabel>Type</InfoLabel>
                 <InfoValue>{selectedArea.type.charAt(0).toUpperCase() + selectedArea.type.slice(1)}</InfoValue>
               </InfoItem>
-              <InfoItem>
-                <InfoLabel>Area</InfoLabel>
-                <InfoValue>{formatArea(selectedArea.area)}</InfoValue>
-              </InfoItem>
+              {selectedArea.type !== 'point' && (
+                <InfoItem>
+                  <InfoLabel>Area</InfoLabel>
+                  <InfoValue>{formatArea(selectedArea.area)}</InfoValue>
+                </InfoItem>
+              )}
             </InfoGrid>
 
-            {selectedArea.averageUhi && selectedArea.averageUhi > 0 && (
+            {selectedArea.type === 'point' && selectedArea.point && (
+              <div style={{
+                padding: '10px',
+                backgroundColor: '#fff3cd',
+                border: '1px solid #ffeaa7',
+                borderRadius: '4px',
+                marginTop: '10px'
+              }}>
+                <InfoLabel style={{ color: '#856404', marginBottom: '5px' }}>
+                  🌡️ UHI Intensity at Point
+                </InfoLabel>
+                <InfoValue style={{ color: '#856404', fontSize: '16px', fontWeight: 'bold' }}>
+                  {selectedArea.point.uhiIntensity}°C hotter than rural average
+                </InfoValue>
+                <div style={{ marginTop: '5px', fontSize: '12px', color: '#856404' }}>
+                  Location: {selectedArea.point.areaName}
+                </div>
+              </div>
+            )}
+
+            {selectedArea.type !== 'point' && selectedArea.averageUhi && selectedArea.averageUhi > 0 && (
               <div style={{
                 padding: '10px',
                 backgroundColor: '#fff3cd',
@@ -308,7 +331,7 @@ const AreaInfo = ({ selectedArea, isSelecting, onStartSelection, onClearSelectio
               </div>
             )}
 
-            {selectedArea.bounds && (
+            {selectedArea.type !== 'point' && selectedArea.bounds && (
               <div>
                 <InfoLabel>Bounds</InfoLabel>
                 <InfoGrid>

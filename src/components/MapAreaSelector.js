@@ -207,7 +207,7 @@ const View3DButton = styled.button`
 const MapAreaSelector = ({ onAreaSelected, isSelecting, selectedArea, onClearSelection }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
-  const drawingManagerRef = useRef(null);
+
   const selectedShapeRef = useRef(null);
   const uhiPolygonsRef = useRef([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -386,6 +386,7 @@ const MapAreaSelector = ({ onAreaSelected, isSelecting, selectedArea, onClearSel
             strokeWeight: 0,
             fillColor: getColor(cell.intensity),
             fillOpacity: 0.4,
+            clickable: false, // Make polygons non-clickable so clicks pass through to map
             map: map,
             title: `${cell.name}: Feels ${cell.intensity.toFixed(1)}°C hotter than rural average`
           });
@@ -404,61 +405,11 @@ const MapAreaSelector = ({ onAreaSelected, isSelecting, selectedArea, onClearSel
 
         uhiPolygonsRef.current = polygons;
 
-        // Initialize drawing manager
-        const drawingManager = new google.maps.drawing.DrawingManager({
-          drawingMode: null,
-          drawingControl: false,
-          drawingControlOptions: {
-            position: google.maps.ControlPosition.TOP_CENTER,
-            drawingModes: [
-              google.maps.drawing.OverlayType.POLYGON,
-              google.maps.drawing.OverlayType.RECTANGLE,
-              google.maps.drawing.OverlayType.CIRCLE
-            ]
-          },
-          polygonOptions: {
-            fillColor: '#007bff',
-            fillOpacity: 0.3,
-            strokeWeight: 2,
-            strokeColor: '#007bff',
-            clickable: true,
-            editable: true,
-            zIndex: 1
-          },
-          rectangleOptions: {
-            fillColor: '#28a745',
-            fillOpacity: 0.3,
-            strokeWeight: 2,
-            strokeColor: '#28a745',
-            clickable: true,
-            editable: true,
-            zIndex: 1
-          },
-          circleOptions: {
-            fillColor: '#ffc107',
-            fillOpacity: 0.3,
-            strokeWeight: 2,
-            strokeColor: '#ffc107',
-            clickable: true,
-            editable: true,
-            zIndex: 1
-          }
-        });
-
-        drawingManager.setMap(map);
-        drawingManagerRef.current = drawingManager;
-
-        // Listen for shape completion
-        google.maps.event.addListener(drawingManager, 'polygoncomplete', (polygon) => {
-          handleShapeComplete(polygon, 'polygon');
-        });
-
-        google.maps.event.addListener(drawingManager, 'rectanglecomplete', (rectangle) => {
-          handleShapeComplete(rectangle, 'rectangle');
-        });
-
-        google.maps.event.addListener(drawingManager, 'circlecomplete', (circle) => {
-          handleShapeComplete(circle, 'circle');
+        // Add click listener for single point selection - ALWAYS handle clicks
+        map.addListener('click', (event) => {
+          console.log('=== MAP CLICK EVENT ===', isSelecting, event.latLng.lat(), event.latLng.lng());
+          // Always handle click for testing
+          handlePointClick(event.latLng);
         });
 
         setIsLoading(false);
@@ -485,173 +436,75 @@ const MapAreaSelector = ({ onAreaSelected, isSelecting, selectedArea, onClearSel
   }, [showUhiGrid]);
 
   useEffect(() => {
-    if (mapInstanceRef.current && drawingManagerRef.current) {
-      if (isSelecting) {
-        // Clear any existing selection when starting new selection
-        if (selectedShapeRef.current) {
-          selectedShapeRef.current.setMap(null);
-          selectedShapeRef.current = null;
-        }
-        // Enable drawing mode
-        drawingManagerRef.current.setDrawingMode(google.maps.drawing.OverlayType.POLYGON);
-      } else {
-        // Disable drawing mode
-        drawingManagerRef.current.setDrawingMode(null);
+    if (mapInstanceRef.current && isSelecting) {
+      // Clear any existing selection when starting new selection
+      if (selectedShapeRef.current) {
+        selectedShapeRef.current.setMap(null);
+        selectedShapeRef.current = null;
       }
+      setSelectedAreaStats(null);
     }
   }, [isSelecting]);
 
-  const handleShapeComplete = (shape, type) => {
+  const handlePointClick = (latLng) => {
+    console.log('=== POINT CLICK HANDLED ===', latLng.lat(), latLng.lng());
+    
     // Clear previous selection
     if (selectedShapeRef.current) {
       selectedShapeRef.current.setMap(null);
     }
 
-    // Make the shape non-editable after selection
-    shape.setOptions({
-      editable: false,
-      clickable: false
-    });
-
-    selectedShapeRef.current = shape;
-
-    // Calculate area and bounds
-    let area = 0;
-    let bounds = null;
-    let coordinates = [];
-
-    if (type === 'polygon') {
-      const path = shape.getPath();
-      coordinates = path.getArray().map(latLng => ({
-        lat: latLng.lat(),
-        lng: latLng.lng()
-      }));
-      area = google.maps.geometry.spherical.computeArea(path);
-      bounds = new google.maps.LatLngBounds();
-      path.forEach(latLng => bounds.extend(latLng));
-    } else if (type === 'rectangle') {
-      bounds = shape.getBounds();
-      const ne = bounds.getNorthEast();
-      const sw = bounds.getSouthWest();
-      coordinates = [
-        { lat: ne.lat(), lng: sw.lng() },
-        { lat: ne.lat(), lng: ne.lng() },
-        { lat: sw.lat(), lng: ne.lng() },
-        { lat: sw.lat(), lng: sw.lng() }
-      ];
-      area = google.maps.geometry.spherical.computeArea([
-        ne, { lat: ne.lat(), lng: sw.lng() }, sw, { lat: sw.lat(), lng: ne.lng() }
-      ]);
-    } else if (type === 'circle') {
-      const center = shape.getCenter();
-      const radius = shape.getRadius();
-      coordinates = [{ lat: center.lat(), lng: center.lng() }];
-      area = Math.PI * radius * radius;
-      bounds = new google.maps.LatLngBounds();
-      bounds.extend(center);
-    }
-
-    // Convert area to square kilometers
-    const areaKm2 = area / 1000000;
-
-    // Calculate average UHI intensity within the selected area
-    const averageUhi = calculateAverageUhiIntensity(shape, type);
-
-    // Calculate comprehensive statistics
-    const statistics = calculateAreaStatistics(shape, type);
-    console.log('Calculated statistics:', statistics);
-    setSelectedAreaStats(statistics);
-
-    const areaData = {
-      type,
-      coordinates,
-      area: areaKm2,
-      bounds: bounds ? {
-        north: bounds.getNorthEast().lat(),
-        south: bounds.getSouthWest().lat(),
-        east: bounds.getNorthEast().lng(),
-        west: bounds.getSouthWest().lng()
-      } : null,
-      shape,
-      averageUhi,
-      statistics
-    };
-
-    onAreaSelected(areaData);
-  };
-
-  // Calculate average UHI intensity within a selected area
-  const calculateAverageUhiIntensity = (shape, type) => {
-    const gridData = generateUhiGrid();
-    let totalIntensity = 0;
-    let overlappingCells = 0;
-
-    gridData.forEach(cell => {
-      // Check if the cell overlaps with the selected area
-      const cellPolygon = new google.maps.Polygon({
-        paths: cell.paths
+    try {
+      // Create a simple marker for the selected point
+      const marker = new google.maps.Marker({
+        position: latLng,
+        map: mapInstanceRef.current,
+        title: 'Selected Point',
+        label: '📍',
+        animation: google.maps.Animation.DROP
       });
 
-      if (google.maps.geometry.poly.containsLocation) {
-        // For each vertex of the cell, check if it's inside the selected area
-        let cellInside = false;
-        cell.paths.forEach(vertex => {
-          const latLng = new google.maps.LatLng(vertex.lat, vertex.lng);
-          if (google.maps.geometry.poly.containsLocation(latLng, shape)) {
-            cellInside = true;
-          }
-        });
+      selectedShapeRef.current = marker;
+      console.log('Marker created successfully');
 
-        if (cellInside) {
-          totalIntensity += cell.intensity;
-          overlappingCells++;
-        }
-      }
-    });
+      // Get UHI data for this point
+      const gridData = generateUhiGrid();
+      const nearestCell = findNearestGridCell(latLng, gridData);
+      
+      const pointData = {
+        lat: latLng.lat(),
+        lng: latLng.lng(),
+        uhiIntensity: nearestCell ? nearestCell.intensity.toFixed(1) : '0.0',
+        areaName: nearestCell ? nearestCell.name : 'Unknown Area'
+      };
 
-    // If no overlapping cells found, try a different approach for small selections
-    if (overlappingCells === 0) {
-      // For very small selections, find the nearest grid cell
-      const shapeCenter = getShapeCenter(shape, type);
-      if (shapeCenter) {
-        const nearestCell = findNearestGridCell(shapeCenter, gridData);
-        if (nearestCell) {
-          return nearestCell.intensity.toFixed(1);
-        }
-      }
+      // Create simple statistics for the point
+      const statistics = {
+        average: pointData.uhiIntensity,
+        maximum: pointData.uhiIntensity,
+        minimum: pointData.uhiIntensity,
+        cellCount: 1
+      };
+
+      setSelectedAreaStats(statistics);
+      console.log('Point data set:', pointData);
+
+      // Call the callback with point data
+      onAreaSelected({
+        type: 'point',
+        coordinates: [{ lat: latLng.lat(), lng: latLng.lng() }],
+        point: pointData,
+        statistics: statistics
+      });
+    } catch (error) {
+      console.error('Error in handlePointClick:', error);
     }
-
-    return overlappingCells > 0 ? (totalIntensity / overlappingCells).toFixed(1) : 0;
   };
 
-  // Get the center point of a shape
-  const getShapeCenter = (shape, type) => {
-    if (type === 'circle') {
-      return shape.getCenter();
-    } else if (type === 'rectangle') {
-      const bounds = shape.getBounds();
-      return new google.maps.LatLng(
-        (bounds.getNorthEast().lat() + bounds.getSouthWest().lat()) / 2,
-        (bounds.getNorthEast().lng() + bounds.getSouthWest().lng()) / 2
-      );
-    } else if (type === 'polygon') {
-      const path = shape.getPath();
-      let totalLat = 0, totalLng = 0;
-      const numPoints = path.getLength();
-      
-      for (let i = 0; i < numPoints; i++) {
-        const point = path.getAt(i);
-        totalLat += point.lat();
-        totalLng += point.lng();
-      }
-      
-      return new google.maps.LatLng(totalLat / numPoints, totalLng / numPoints);
-    }
-    return null;
-  };
+
 
   // Find the nearest grid cell to a point
-  const findNearestGridCell = (center, gridData) => {
+  const findNearestGridCell = (latLng, gridData) => {
     let nearestCell = null;
     let minDistance = Infinity;
 
@@ -662,8 +515,8 @@ const MapAreaSelector = ({ onAreaSelected, isSelecting, selectedArea, onClearSel
       };
       
       const distance = Math.sqrt(
-        Math.pow(center.lat() - cellCenter.lat, 2) + 
-        Math.pow(center.lng() - cellCenter.lng, 2)
+        Math.pow(latLng.lat() - cellCenter.lat, 2) + 
+        Math.pow(latLng.lng() - cellCenter.lng, 2)
       );
       
       if (distance < minDistance) {
@@ -675,85 +528,13 @@ const MapAreaSelector = ({ onAreaSelected, isSelecting, selectedArea, onClearSel
     return nearestCell;
   };
 
-  // Calculate comprehensive UHI statistics for a selected area
-  const calculateAreaStatistics = (shape, type) => {
-    const gridData = generateUhiGrid();
-    console.log('Generated grid data:', gridData.length, 'cells');
-    const intensities = [];
-    const selectedCells = [];
 
-    gridData.forEach(cell => {
-      // Calculate centroid of the grid cell
-      const cellCenter = {
-        lat: (cell.paths[0].lat + cell.paths[2].lat) / 2,
-        lng: (cell.paths[0].lng + cell.paths[2].lng) / 2
-      };
-
-      let isInside = false;
-
-      if (type === 'rectangle') {
-        // For rectangles, use bounds.contains()
-        const bounds = shape.getBounds();
-        const centerLatLng = new google.maps.LatLng(cellCenter.lat, cellCenter.lng);
-        isInside = bounds.contains(centerLatLng);
-      } else if (type === 'circle') {
-        // For circles, check if distance from center is less than radius
-        const center = shape.getCenter();
-        const radius = shape.getRadius();
-        const distance = google.maps.geometry.spherical.computeDistanceBetween(
-          center,
-          new google.maps.LatLng(cellCenter.lat, cellCenter.lng)
-        );
-        isInside = distance <= radius;
-      } else if (type === 'polygon') {
-        // For polygons, use containsLocation
-        const centerLatLng = new google.maps.LatLng(cellCenter.lat, cellCenter.lng);
-        isInside = google.maps.geometry.poly.containsLocation(centerLatLng, shape);
-      }
-
-      if (isInside) {
-        intensities.push(cell.intensity);
-        selectedCells.push(cell);
-      }
-    });
-
-    console.log('Found', intensities.length, 'cells inside selection');
-    if (intensities.length === 0) {
-      console.log('No grid cells found in selection, using fallback');
-      // Return fallback statistics for small selections
-      return {
-        average: "2.5",
-        minimum: "1.0",
-        maximum: "4.0",
-        cellCount: 1,
-        selectedCells: []
-      };
-    }
-
-    // Calculate statistics
-    const avg = intensities.reduce((sum, val) => sum + val, 0) / intensities.length;
-    const min = Math.min(...intensities);
-    const max = Math.max(...intensities);
-
-    return {
-      average: avg.toFixed(1),
-      minimum: min.toFixed(1),
-      maximum: max.toFixed(1),
-      cellCount: intensities.length,
-      selectedCells: selectedCells
-    };
-  };
 
   const clearCurrentSelection = () => {
     if (selectedShapeRef.current) {
       selectedShapeRef.current.setMap(null);
       selectedShapeRef.current = null;
     }
-    // Clear any incomplete drawings
-    if (drawingManagerRef.current) {
-      drawingManagerRef.current.setDrawingMode(null);
-    }
-    // Clear statistics and 3D visualization
     setSelectedAreaStats(null);
     setShow3DVisualization(false);
   };
@@ -763,7 +544,7 @@ const MapAreaSelector = ({ onAreaSelected, isSelecting, selectedArea, onClearSel
     if (onClearSelection) {
       onClearSelection(clearCurrentSelection);
     }
-  }, [onClearSelection]);
+  }, []); // Remove onClearSelection dependency to prevent infinite loop
 
   // Add keyboard shortcut for clearing selection (Escape key)
   useEffect(() => {
@@ -781,7 +562,7 @@ const MapAreaSelector = ({ onAreaSelected, isSelecting, selectedArea, onClearSel
     return () => {
       document.removeEventListener('keydown', handleKeyPress);
     };
-  }, [onAreaSelected]);
+  }, []); // Remove onAreaSelected dependency to prevent infinite loop
 
   if (error) {
     return (
@@ -808,7 +589,7 @@ const MapAreaSelector = ({ onAreaSelected, isSelecting, selectedArea, onClearSel
       <HeatmapToggle>
         <span>🌡️ UHI Grid:</span>
         <ToggleButton 
-          active={showUhiGrid}
+          active={showUhiGrid ? "true" : "false"}
           onClick={() => setShowUhiGrid(!showUhiGrid)}
         >
           {showUhiGrid ? 'ON' : 'OFF'}
@@ -863,7 +644,7 @@ const MapAreaSelector = ({ onAreaSelected, isSelecting, selectedArea, onClearSel
       
       {isSelecting && (
         <SelectionOverlay>
-          Click and drag to draw a polygon, rectangle, or circle
+          Click anywhere on the map to select a point
         </SelectionOverlay>
       )}
       
