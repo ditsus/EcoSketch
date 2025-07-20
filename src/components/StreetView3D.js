@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const Modal = styled.div`
@@ -172,6 +173,16 @@ const StreetView3D = ({ selectedArea, onClose }) => {
         renderer.shadowMap.enabled = true;
         renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         
+        // Add OrbitControls for user camera control
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true; // Smooth camera movement
+        controls.dampingFactor = 0.05;
+        controls.screenSpacePanning = false;
+        controls.minDistance = 3; // Minimum zoom distance
+        controls.maxDistance = 50; // Maximum zoom distance
+        controls.maxPolarAngle = Math.PI / 2; // Prevent going below ground
+        controls.target.set(0, 2, 0); // Look at center of scene
+        
         // Add lights
         const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
         scene.add(ambientLight);
@@ -193,6 +204,7 @@ const StreetView3D = ({ selectedArea, onClose }) => {
         sceneRef.current = scene;
         cameraRef.current = camera;
         rendererRef.current = renderer;
+        controlsRef.current = controls;
         
         setLoadingMessage('Fetching Street View image...');
         
@@ -527,19 +539,15 @@ ${geminiResponse.analysis || 'Analysis not available'}`;
   };
 
   const animate = () => {
-    if (!sceneRef.current || !cameraRef.current || !rendererRef.current) return;
+    if (!sceneRef.current || !cameraRef.current || !rendererRef.current || !controlsRef.current) return;
     
     requestAnimationFrame(animate);
     
-    // Gentle camera rotation around the scene
-    const time = Date.now() * 0.0005;
-    const radius = 12;
-    cameraRef.current.position.x = Math.cos(time) * radius;
-    cameraRef.current.position.z = Math.sin(time) * radius;
-    cameraRef.current.position.y = 6 + Math.sin(time * 2) * 1;
-    cameraRef.current.lookAt(0, 2, 0);
+    // Update controls
+    controlsRef.current.update();
     
     // Subtle tree swaying animation
+    const time = Date.now() * 0.0005;
     sceneRef.current.children.forEach(child => {
       if (child.geometry && 
           child.geometry.type === 'SphereGeometry' && 
@@ -556,7 +564,7 @@ ${geminiResponse.analysis || 'Analysis not available'}`;
   };
 
   const handleResize = () => {
-    if (!canvasRef.current || !cameraRef.current || !rendererRef.current) return;
+    if (!canvasRef.current || !cameraRef.current || !rendererRef.current || !controlsRef.current) return;
     
     const width = canvasRef.current.clientWidth;
     const height = canvasRef.current.clientHeight;
@@ -564,11 +572,18 @@ ${geminiResponse.analysis || 'Analysis not available'}`;
     cameraRef.current.aspect = width / height;
     cameraRef.current.updateProjectionMatrix();
     rendererRef.current.setSize(width, height);
+    controlsRef.current.update();
   };
 
   useEffect(() => {
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      // Clean up controls
+      if (controlsRef.current) {
+        controlsRef.current.dispose();
+      }
+    };
   }, []);
 
   if (!selectedArea) return null;
@@ -599,6 +614,19 @@ ${geminiResponse.analysis || 'Analysis not available'}`;
               </InfoText>
               <InfoText>
                 <strong>UHI Intensity:</strong> {selectedArea.point?.uhiIntensity || 'N/A'}°C hotter than rural average
+              </InfoText>
+            </InfoSection>
+            
+            <InfoSection>
+              <InfoTitle>🎮 Camera Controls</InfoTitle>
+              <InfoText>
+                <strong>Mouse:</strong> Click and drag to rotate view
+              </InfoText>
+              <InfoText>
+                <strong>Scroll:</strong> Zoom in/out
+              </InfoText>
+              <InfoText>
+                <strong>Right-click:</strong> Pan view
               </InfoText>
             </InfoSection>
             
