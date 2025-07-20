@@ -905,7 +905,6 @@ const StreetView3D = ({ selectedArea, onClose }) => {
     }
     
     // Set all collected objects at once
-    console.log('Generated scene objects:', newSceneObjects);
     setSceneObjects(newSceneObjects);
   };
 
@@ -1306,11 +1305,7 @@ ${geminiResponse.analysis || 'Analysis not available'}`;
     raycaster.setFromCamera(mouse, cameraRef.current);
     const intersects = raycaster.intersectObjects(sceneRef.current.children, true);
 
-    console.log('Mouse click intersects:', intersects.map(i => ({
-      object: i.object.name || i.object.type,
-      userData: i.object.userData,
-      objectId: i.object.userData?.objectId
-    })));
+
 
     if (intersects.length > 0) {
       const intersectedObject = intersects[0].object;
@@ -1332,22 +1327,28 @@ ${geminiResponse.analysis || 'Analysis not available'}`;
       
       const objectId = intersectedObject.userData.objectId;
       
-      console.log('Looking for object with ID:', objectId);
-      console.log('Available scene objects:', sceneObjects.map(obj => ({ id: obj.id, name: obj.name, type: obj.type })));
+
       
       if (objectId) {
         const object = sceneObjects.find(obj => obj.id === objectId);
         if (object) {
-          setSelectedObject(object);
+          // Only allow selection in edit mode
+          if (isEditMode) {
+            setSelectedObject(object);
+          }
           // NO direct dragging - only gizmo movement allowed
         }
       } else {
         // Clicked on something that's not an editable object
-        setSelectedObject(null);
+        if (isEditMode) {
+          setSelectedObject(null);
+        }
       }
     } else {
       // Clicked on empty space
-      setSelectedObject(null);
+      if (isEditMode) {
+        setSelectedObject(null);
+      }
     }
   };
 
@@ -1536,9 +1537,10 @@ ${geminiResponse.analysis || 'Analysis not available'}`;
   };
 
   const handleKeyDown = (event) => {
-    if (event.key === 'Backspace' && selectedObject) {
+    if (event.key === 'Backspace' && selectedObject && isEditMode) {
       event.preventDefault();
       removeObject(selectedObject.id);
+      setSelectedObject(null);
     }
   };
 
@@ -1718,16 +1720,13 @@ ${geminiResponse.analysis || 'Analysis not available'}`;
               {!isEditMode && (
                 <>
                   <InfoText style={{ color: '#28a745', fontWeight: 'bold', marginTop: '10px' }}>
-                    🎯 Object Selection:
+                    🎯 View Mode:
                   </InfoText>
                   <InfoText style={{ fontSize: '12px' }}>
-                    • Click objects to select them (highlighted)
+                    • Camera controls active - drag to rotate, scroll to zoom
                   </InfoText>
                   <InfoText style={{ fontSize: '12px' }}>
-                    • Press Backspace to delete selected object
-                  </InfoText>
-                  <InfoText style={{ fontSize: '12px' }}>
-                    • Enable Edit Mode to move and rotate objects
+                    • Enable Edit Mode to select and manipulate objects
                   </InfoText>
                 </>
               )}
