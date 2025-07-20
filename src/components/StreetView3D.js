@@ -4,6 +4,58 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
+// Object types for the scene editor
+const OBJECT_TYPES = {
+  HOUSE: 'house',
+  ROAD: 'road',
+  TREE: 'tree',
+  SIDEWALK: 'sidewalk',
+  STREET_LIGHT: 'street_light',
+  BENCH: 'bench'
+};
+
+// Object configurations
+const OBJECT_CONFIGS = {
+  [OBJECT_TYPES.HOUSE]: {
+    geometry: new THREE.BoxGeometry(2, 3, 2),
+    material: new THREE.MeshLambertMaterial({ color: 0x8B4513 }),
+    defaultPosition: [0, 1.5, 0],
+    name: 'House'
+  },
+  [OBJECT_TYPES.ROAD]: {
+    geometry: new THREE.PlaneGeometry(8, 2),
+    material: new THREE.MeshLambertMaterial({ color: 0x2C2C2C }),
+    defaultPosition: [0, 0.01, 0],
+    rotation: [-Math.PI / 2, 0, 0],
+    name: 'Road'
+  },
+  [OBJECT_TYPES.TREE]: {
+    geometry: new THREE.CylinderGeometry(0.2, 0.3, 3),
+    material: new THREE.MeshLambertMaterial({ color: 0x8B4513 }),
+    defaultPosition: [0, 1.5, 0],
+    name: 'Tree Trunk'
+  },
+  [OBJECT_TYPES.SIDEWALK]: {
+    geometry: new THREE.PlaneGeometry(1.5, 8),
+    material: new THREE.MeshLambertMaterial({ color: 0xD3D3D3 }),
+    defaultPosition: [0, 0.02, 0],
+    rotation: [-Math.PI / 2, 0, 0],
+    name: 'Sidewalk'
+  },
+  [OBJECT_TYPES.STREET_LIGHT]: {
+    geometry: new THREE.CylinderGeometry(0.1, 0.1, 4),
+    material: new THREE.MeshLambertMaterial({ color: 0x696969 }),
+    defaultPosition: [0, 2, 0],
+    name: 'Street Light'
+  },
+  [OBJECT_TYPES.BENCH]: {
+    geometry: new THREE.BoxGeometry(1.5, 0.3, 0.5),
+    material: new THREE.MeshLambertMaterial({ color: 0x8B4513 }),
+    defaultPosition: [0, 0.15, 0],
+    name: 'Bench'
+  }
+};
+
 const Modal = styled.div`
   position: fixed;
   top: 0;
@@ -83,6 +135,7 @@ const RightPanel = styled.div`
 const Canvas = styled.canvas`
   width: 100%;
   height: 100%;
+  cursor: ${props => props.editMode ? 'crosshair' : 'default'};
 `;
 
 const LoadingOverlay = styled.div`
@@ -122,6 +175,147 @@ const InfoText = styled.p`
   line-height: 1.5;
 `;
 
+const EditorSection = styled.div`
+  margin-bottom: 20px;
+  padding: 15px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+`;
+
+const EditorTitle = styled.h3`
+  margin: 0 0 15px 0;
+  color: #333;
+  font-size: 16px;
+  font-weight: 600;
+`;
+
+const ButtonGroup = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 15px;
+`;
+
+const AddButton = styled.button`
+  background: #28a745;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+
+  &:hover {
+    background: #218838;
+  }
+`;
+
+const RemoveButton = styled.button`
+  background: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: #c82333;
+  }
+`;
+
+const ObjectList = styled.div`
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid #e9ecef;
+  border-radius: 4px;
+  background: #f8f9fa;
+`;
+
+const ObjectItem = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid #e9ecef;
+  background: white;
+  cursor: pointer;
+  transition: background 0.2s ease;
+
+  &:hover {
+    background: #f8f9fa;
+  }
+
+  &:last-child {
+    border-bottom: none;
+  }
+
+  &.selected {
+    background: #007bff;
+    color: white;
+  }
+`;
+
+const ObjectName = styled.span`
+  font-size: 12px;
+  font-weight: 500;
+`;
+
+const ObjectPosition = styled.span`
+  font-size: 10px;
+  color: #666;
+  margin-left: 8px;
+`;
+
+const ControlPanel = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+`;
+
+const ControlRow = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+`;
+
+const ControlLabel = styled.label`
+  font-size: 11px;
+  color: #666;
+  min-width: 40px;
+`;
+
+const ControlInput = styled.input`
+  width: 60px;
+  padding: 4px 6px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 11px;
+`;
+
+const ModeToggle = styled.button`
+  background: ${props => props.active ? '#007bff' : '#6c757d'};
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-bottom: 10px;
+
+  &:hover {
+    background: ${props => props.active ? '#0056b3' : '#5a6268'};
+  }
+`;
+
 const StreetViewImage = styled.img`
   width: 100%;
   height: 200px;
@@ -142,6 +336,15 @@ const StreetView3D = ({ selectedArea, onClose }) => {
   const [streetViewUrl, setStreetViewUrl] = useState('');
   const [geminiAnalysis, setGeminiAnalysis] = useState('');
   const [geminiData, setGeminiData] = useState(null);
+  
+  // Editor state
+  const [sceneObjects, setSceneObjects] = useState([]);
+  const [selectedObject, setSelectedObject] = useState(null);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragPlane] = useState(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0));
+  const [raycaster] = useState(new THREE.Raycaster());
+  const [mouse] = useState(new THREE.Vector2());
 
   useEffect(() => {
     if (!selectedArea) return;
@@ -182,6 +385,9 @@ const StreetView3D = ({ selectedArea, onClose }) => {
         controls.maxDistance = 50; // Maximum zoom distance
         controls.maxPolarAngle = Math.PI / 2; // Prevent going below ground
         controls.target.set(0, 2, 0); // Look at center of scene
+        
+        // Disable controls when in edit mode
+        controls.enabled = !isEditMode;
         
         // Add lights
         const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
@@ -589,7 +795,7 @@ const StreetView3D = ({ selectedArea, onClose }) => {
       
       // Initialize Gemini
       const genAI = new GoogleGenerativeAI(process.env.REACT_APP_GEMINI_API_KEY);
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-lite" });
 
       const prompt = `Analyze this urban street image in detail and return a comprehensive JSON object describing the scene for 3D model generation:
 
@@ -750,16 +956,163 @@ ${geminiResponse.analysis || 'Analysis not available'}`;
     controlsRef.current.update();
   };
 
+  // Editor functions
+  const addObject = (objectType) => {
+    const config = OBJECT_CONFIGS[objectType];
+    if (!config) return;
+
+    const object = {
+      id: Date.now() + Math.random(),
+      type: objectType,
+      name: config.name,
+      mesh: null,
+      position: [...config.defaultPosition],
+      rotation: config.rotation ? [...config.rotation] : [0, 0, 0],
+      scale: [1, 1, 1]
+    };
+
+    // Create the mesh
+    const geometry = config.geometry.clone();
+    const material = config.material.clone();
+    object.mesh = new THREE.Mesh(geometry, material);
+    object.mesh.position.set(...object.position);
+    object.mesh.rotation.set(...object.rotation);
+    object.mesh.castShadow = true;
+    object.mesh.receiveShadow = true;
+    object.mesh.userData = { objectId: object.id };
+
+    // Add to scene
+    sceneRef.current.add(object.mesh);
+
+    // Add tree leaves if it's a tree
+    if (objectType === OBJECT_TYPES.TREE) {
+      const leavesGeometry = new THREE.SphereGeometry(0.8, 8, 8);
+      const leavesMaterial = new THREE.MeshLambertMaterial({ color: 0x228B22 });
+      const leaves = new THREE.Mesh(leavesGeometry, leavesMaterial);
+      leaves.position.set(object.position[0], object.position[1] + 2.5, object.position[2]);
+      leaves.castShadow = true;
+      leaves.userData = { objectId: object.id, isLeaves: true };
+      sceneRef.current.add(leaves);
+      object.leaves = leaves;
+    }
+
+    setSceneObjects(prev => [...prev, object]);
+    setSelectedObject(object);
+  };
+
+  const removeObject = (objectId) => {
+    const object = sceneObjects.find(obj => obj.id === objectId);
+    if (!object) return;
+
+    // Remove from scene
+    if (object.mesh) {
+      sceneRef.current.remove(object.mesh);
+    }
+    if (object.leaves) {
+      sceneRef.current.remove(object.leaves);
+    }
+
+    setSceneObjects(prev => prev.filter(obj => obj.id !== objectId));
+    if (selectedObject?.id === objectId) {
+      setSelectedObject(null);
+    }
+  };
+
+  const updateObjectPosition = (objectId, x, y, z) => {
+    const object = sceneObjects.find(obj => obj.id === objectId);
+    if (!object) return;
+
+    object.position = [x, y, z];
+    if (object.mesh) {
+      object.mesh.position.set(x, y, z);
+    }
+    if (object.leaves) {
+      object.leaves.position.set(x, y + 2.5, z);
+    }
+
+    setSceneObjects(prev => [...prev]); // Trigger re-render
+  };
+
+  const handleMouseDown = (event) => {
+    if (!isEditMode || !sceneRef.current || !cameraRef.current) return;
+
+    const rect = canvasRef.current.getBoundingClientRect();
+    mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+    raycaster.setFromCamera(mouse, cameraRef.current);
+    const intersects = raycaster.intersectObjects(sceneRef.current.children, true);
+
+    if (intersects.length > 0) {
+      const intersectedObject = intersects[0].object;
+      const objectId = intersectedObject.userData.objectId;
+      
+      if (objectId) {
+        const object = sceneObjects.find(obj => obj.id === objectId);
+        if (object) {
+          setSelectedObject(object);
+          setIsDragging(true);
+        }
+      }
+    }
+  };
+
+  const handleMouseMove = (event) => {
+    if (!isEditMode || !isDragging || !selectedObject || !sceneRef.current || !cameraRef.current) return;
+
+    const rect = canvasRef.current.getBoundingClientRect();
+    mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+    raycaster.setFromCamera(mouse, cameraRef.current);
+    const intersection = new THREE.Vector3();
+    raycaster.ray.intersectPlane(dragPlane, intersection);
+
+    updateObjectPosition(selectedObject.id, intersection.x, intersection.y, intersection.z);
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  const toggleEditMode = () => {
+    setIsEditMode(!isEditMode);
+    if (!isEditMode) {
+      setSelectedObject(null);
+    }
+  };
+
   useEffect(() => {
     window.addEventListener('resize', handleResize);
+    
+    // Add mouse event listeners for editor
+    if (canvasRef.current) {
+      canvasRef.current.addEventListener('mousedown', handleMouseDown);
+      canvasRef.current.addEventListener('mousemove', handleMouseMove);
+      canvasRef.current.addEventListener('mouseup', handleMouseUp);
+    }
+    
     return () => {
       window.removeEventListener('resize', handleResize);
       // Clean up controls
       if (controlsRef.current) {
         controlsRef.current.dispose();
       }
+      // Clean up mouse event listeners
+      if (canvasRef.current) {
+        canvasRef.current.removeEventListener('mousedown', handleMouseDown);
+        canvasRef.current.removeEventListener('mousemove', handleMouseMove);
+        canvasRef.current.removeEventListener('mouseup', handleMouseUp);
+      }
     };
-  }, []);
+  }, [isEditMode, isDragging, selectedObject]);
+
+  // Update controls when edit mode changes
+  useEffect(() => {
+    if (controlsRef.current) {
+      controlsRef.current.enabled = !isEditMode;
+    }
+  }, [isEditMode]);
 
   if (!selectedArea) return null;
 
@@ -773,7 +1126,7 @@ ${geminiResponse.analysis || 'Analysis not available'}`;
         
         <Content>
           <LeftPanel>
-            <Canvas ref={canvasRef} />
+            <Canvas ref={canvasRef} editMode={isEditMode} />
             {loading && (
               <LoadingOverlay>
                 <div>{loadingMessage}</div>
@@ -782,6 +1135,91 @@ ${geminiResponse.analysis || 'Analysis not available'}`;
           </LeftPanel>
           
           <RightPanel>
+            <EditorSection>
+              <EditorTitle>🎨 Scene Editor</EditorTitle>
+              <ModeToggle active={isEditMode} onClick={toggleEditMode}>
+                {isEditMode ? '🖱️ Edit Mode ON' : '🖱️ Edit Mode OFF'}
+              </ModeToggle>
+              
+              <ButtonGroup>
+                <AddButton onClick={() => addObject(OBJECT_TYPES.HOUSE)}>
+                  🏠 Add House
+                </AddButton>
+                <AddButton onClick={() => addObject(OBJECT_TYPES.ROAD)}>
+                  🛣️ Add Road
+                </AddButton>
+                <AddButton onClick={() => addObject(OBJECT_TYPES.TREE)}>
+                  🌳 Add Tree
+                </AddButton>
+                <AddButton onClick={() => addObject(OBJECT_TYPES.SIDEWALK)}>
+                  🚶 Add Sidewalk
+                </AddButton>
+                <AddButton onClick={() => addObject(OBJECT_TYPES.STREET_LIGHT)}>
+                  💡 Add Street Light
+                </AddButton>
+                <AddButton onClick={() => addObject(OBJECT_TYPES.BENCH)}>
+                  🪑 Add Bench
+                </AddButton>
+              </ButtonGroup>
+
+              {sceneObjects.length > 0 && (
+                <>
+                  <EditorTitle>📋 Scene Objects</EditorTitle>
+                  <ObjectList>
+                    {sceneObjects.map((obj) => (
+                      <ObjectItem
+                        key={obj.id}
+                        className={selectedObject?.id === obj.id ? 'selected' : ''}
+                        onClick={() => setSelectedObject(obj)}
+                      >
+                        <div>
+                          <ObjectName>{obj.name}</ObjectName>
+                          <ObjectPosition>
+                            ({obj.position[0].toFixed(1)}, {obj.position[1].toFixed(1)}, {obj.position[2].toFixed(1)})
+                          </ObjectPosition>
+                        </div>
+                        <RemoveButton onClick={(e) => {
+                          e.stopPropagation();
+                          removeObject(obj.id);
+                        }}>
+                          ✕
+                        </RemoveButton>
+                      </ObjectItem>
+                    ))}
+                  </ObjectList>
+                </>
+              )}
+
+              {selectedObject && (
+                <ControlPanel>
+                  <EditorTitle>⚙️ Object Controls</EditorTitle>
+                  <ControlRow>
+                    <ControlLabel>X:</ControlLabel>
+                    <ControlInput
+                      type="number"
+                      step="0.1"
+                      value={selectedObject.position[0]}
+                      onChange={(e) => updateObjectPosition(selectedObject.id, parseFloat(e.target.value), selectedObject.position[1], selectedObject.position[2])}
+                    />
+                    <ControlLabel>Y:</ControlLabel>
+                    <ControlInput
+                      type="number"
+                      step="0.1"
+                      value={selectedObject.position[1]}
+                      onChange={(e) => updateObjectPosition(selectedObject.id, selectedObject.position[0], parseFloat(e.target.value), selectedObject.position[2])}
+                    />
+                    <ControlLabel>Z:</ControlLabel>
+                    <ControlInput
+                      type="number"
+                      step="0.1"
+                      value={selectedObject.position[2]}
+                      onChange={(e) => updateObjectPosition(selectedObject.id, selectedObject.position[0], selectedObject.position[1], parseFloat(e.target.value))}
+                    />
+                  </ControlRow>
+                </ControlPanel>
+              )}
+            </EditorSection>
+
             <InfoSection>
               <InfoTitle>📍 Location Details</InfoTitle>
               <InfoText>
@@ -803,6 +1241,22 @@ ${geminiResponse.analysis || 'Analysis not available'}`;
               <InfoText>
                 <strong>Right-click:</strong> Pan view
               </InfoText>
+              {isEditMode && (
+                <>
+                  <InfoText style={{ color: '#007bff', fontWeight: 'bold', marginTop: '10px' }}>
+                    ✏️ Edit Mode Active:
+                  </InfoText>
+                  <InfoText style={{ fontSize: '12px' }}>
+                    • Click objects to select them
+                  </InfoText>
+                  <InfoText style={{ fontSize: '12px' }}>
+                    • Drag objects to move them
+                  </InfoText>
+                  <InfoText style={{ fontSize: '12px' }}>
+                    • Use position controls to fine-tune
+                  </InfoText>
+                </>
+              )}
             </InfoSection>
             
             {streetViewUrl && (
