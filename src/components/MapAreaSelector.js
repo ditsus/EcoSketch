@@ -166,24 +166,6 @@ const CellCount = styled.div`
   font-weight: 500;
 `;
 
-const ResetButton = styled.button`
-  background: #dc3545;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  padding: 8px 12px;
-  font-size: 12px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  width: 100%;
-  margin-top: 8px;
-
-  &:hover {
-    background: #c82333;
-    transform: translateY(-1px);
-  }
-`;
-
 const View3DButton = styled.button`
   background: #28a745;
   color: white;
@@ -198,6 +180,24 @@ const View3DButton = styled.button`
 
   &:hover {
     background: #218838;
+    transform: translateY(-1px);
+  }
+`;
+
+const ResetButton = styled.button`
+  background: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  width: 100%;
+  margin-top: 8px;
+
+  &:hover {
+    background: #c82333;
     transform: translateY(-1px);
   }
 `;

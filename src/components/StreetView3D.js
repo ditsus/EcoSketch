@@ -1,280 +1,131 @@
-import React, { useEffect, useRef, useState } from 'react';
-import * as THREE from 'three';
-import { OrbitControls } from 'three-stdlib';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import React, { useState, useEffect, useRef } from 'react';
 import styled from 'styled-components';
+import * as THREE from 'three';
 
-const Container = styled.div`
+const Modal = styled.div`
   position: fixed;
   top: 0;
   left: 0;
-  width: 100vw;
-  height: 100vh;
-  background: #000;
-  z-index: 2000;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+`;
+
+const ModalContent = styled.div`
+  background: white;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 1200px;
+  height: 80%;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
 `;
 
 const Header = styled.div`
-  background: rgba(0, 0, 0, 0.8);
-  color: white;
-  padding: 15px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  z-index: 2001;
+  padding: 20px;
+  border-bottom: 1px solid #e9ecef;
+  background: #f8f9fa;
+`;
+
+const Title = styled.h2`
+  margin: 0;
+  color: #333;
+  font-size: 20px;
+  font-weight: 600;
 `;
 
 const CloseButton = styled.button`
   background: #dc3545;
   color: white;
   border: none;
-  border-radius: 4px;
+  border-radius: 6px;
   padding: 8px 16px;
-  cursor: pointer;
   font-size: 14px;
-  
+  cursor: pointer;
+  transition: all 0.2s ease;
+
   &:hover {
     background: #c82333;
   }
 `;
 
-const Controls = styled.div`
+const Content = styled.div`
   display: flex;
-  gap: 10px;
+  flex: 1;
+  overflow: hidden;
 `;
 
-const ActionButton = styled.button`
-  background: #007bff;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  padding: 8px 16px;
-  cursor: pointer;
-  font-size: 14px;
-  
-  &:hover {
-    background: #0056b3;
-  }
-  
-  &:disabled {
-    background: #6c757d;
-    cursor: not-allowed;
-  }
-`;
-
-const Canvas = styled.div`
+const LeftPanel = styled.div`
   flex: 1;
   position: relative;
+  background: #000;
+`;
+
+const RightPanel = styled.div`
+  width: 400px;
+  background: #f8f9fa;
+  padding: 20px;
+  overflow-y: auto;
+  border-left: 1px solid #e9ecef;
+`;
+
+const Canvas = styled.canvas`
+  width: 100%;
+  height: 100%;
 `;
 
 const LoadingOverlay = styled.div`
   position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: white;
-  padding: 20px;
-  border-radius: 8px;
-  text-align: center;
-  z-index: 2002;
+  font-size: 18px;
+  z-index: 1000;
 `;
 
-const AISuggestion = styled.div`
-  position: absolute;
-  bottom: 20px;
-  left: 20px;
-  right: 20px;
-  background: rgba(0, 0, 0, 0.8);
-  color: white;
+const InfoSection = styled.div`
+  margin-bottom: 20px;
   padding: 15px;
+  background: white;
   border-radius: 8px;
-  z-index: 2001;
-  max-height: 150px;
-  overflow-y: auto;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 `;
 
-const ControlsInfo = styled.div`
-  position: absolute;
-  top: 80px;
-  left: 20px;
-  background: rgba(0, 0, 0, 0.8);
-  color: white;
-  padding: 12px;
-  border-radius: 8px;
-  z-index: 2001;
-  font-size: 12px;
-  max-width: 200px;
-`;
-
-const ResetCameraButton = styled.button`
-  position: absolute;
-  top: 200px;
-  left: 20px;
-  background: rgba(0, 123, 255, 0.8);
-  color: white;
-  border: none;
-  border-radius: 4px;
-  padding: 8px 12px;
-  font-size: 12px;
-  cursor: pointer;
-  z-index: 2001;
-  
-  &:hover {
-    background: rgba(0, 123, 255, 1);
-  }
-`;
-
-const StreetViewImage = styled.div`
-  position: absolute;
-  top: 80px;
-  right: 20px;
-  background: rgba(0, 0, 0, 0.8);
-  border-radius: 8px;
-  padding: 10px;
-  z-index: 2001;
-  max-width: 300px;
-`;
-
-const ImageTitle = styled.div`
-  color: white;
-  font-size: 12px;
+const InfoTitle = styled.h3`
+  margin: 0 0 10px 0;
+  color: #333;
+  font-size: 16px;
   font-weight: 600;
-  margin-bottom: 8px;
-  text-align: center;
 `;
 
-const StreetViewImg = styled.img`
+const InfoText = styled.p`
+  margin: 0;
+  color: #666;
+  font-size: 14px;
+  line-height: 1.5;
+`;
+
+const StreetViewImage = styled.img`
   width: 100%;
-  max-width: 280px;
-  height: auto;
-  border-radius: 4px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-`;
-
-const LocationInfo = styled.div`
-  color: white;
-  font-size: 11px;
-  margin-top: 8px;
-  text-align: center;
-  opacity: 0.8;
-`;
-
-const ToggleImageButton = styled.button`
-  position: absolute;
-  top: 250px;
-  left: 20px;
-  background: rgba(40, 167, 69, 0.8);
-  color: white;
-  border: none;
-  border-radius: 4px;
-  padding: 8px 12px;
-  font-size: 12px;
-  cursor: pointer;
-  z-index: 2001;
-  
-  &:hover {
-    background: rgba(40, 167, 69, 1);
-  }
-`;
-
-const LocationSelector = styled.div`
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  background: rgba(0, 0, 0, 0.9);
-  color: white;
-  padding: 20px;
-  border-radius: 12px;
-  z-index: 2003;
-  text-align: center;
-  min-width: 300px;
-`;
-
-const CoordinateInput = styled.div`
-  display: flex;
-  gap: 15px;
-  margin: 20px 0;
-  justify-content: center;
-  align-items: center;
-`;
-
-const InputGroup = styled.div`
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 5px;
-`;
-
-const InputLabel = styled.label`
-  font-size: 12px;
-  color: #ccc;
-  font-weight: 600;
-`;
-
-const CoordinateInputField = styled.input`
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  border-radius: 4px;
-  color: white;
-  padding: 8px 12px;
-  font-size: 14px;
-  width: 120px;
-  text-align: center;
-  
-  &:focus {
-    outline: none;
-    border-color: #007bff;
-    background: rgba(255, 255, 255, 0.15);
-  }
-  
-  &::placeholder {
-    color: rgba(255, 255, 255, 0.5);
-  }
-`;
-
-const BoundsInfo = styled.div`
-  background: rgba(255, 255, 255, 0.1);
-  padding: 10px;
-  border-radius: 6px;
-  margin: 15px 0;
-  font-size: 12px;
-  line-height: 1.4;
-`;
-
-const SelectionInstructions = styled.div`
-  font-size: 14px;
+  height: 200px;
+  object-fit: cover;
+  border-radius: 8px;
   margin-bottom: 15px;
-  line-height: 1.4;
-`;
-
-const ButtonGroup = styled.div`
-  display: flex;
-  gap: 10px;
-  justify-content: center;
-  margin-top: 15px;
-`;
-
-const SelectButton = styled.button`
-  background: ${props => props.primary ? '#007bff' : '#6c757d'};
-  color: white;
-  border: none;
-  border-radius: 4px;
-  padding: 10px 16px;
-  font-size: 14px;
-  cursor: pointer;
-  
-  &:hover {
-    background: ${props => props.primary ? '#0056b3' : '#545b62'};
-  }
-  
-  &:disabled {
-    background: #6c757d;
-    cursor: not-allowed;
-  }
 `;
 
 const StreetView3D = ({ selectedArea, onClose }) => {
@@ -284,791 +135,241 @@ const StreetView3D = ({ selectedArea, onClose }) => {
   const cameraRef = useRef(null);
   const controlsRef = useRef(null);
   
-  const [isLoading, setIsLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
   const [loadingMessage, setLoadingMessage] = useState('Initializing 3D scene...');
-  const [aiSuggestion, setAiSuggestion] = useState('');
-  const [currentLocation, setCurrentLocation] = useState(null);
-  const [streetViewImage, setStreetViewImage] = useState(null);
-  const [showStreetView, setShowStreetView] = useState(true);
-  const [isSelectingLocation, setIsSelectingLocation] = useState(false);
+  const [streetViewUrl, setStreetViewUrl] = useState('');
+  const [geminiAnalysis, setGeminiAnalysis] = useState('');
 
-  // Initialize Gemini AI
-  const genAI = new GoogleGenerativeAI(process.env.REACT_APP_GEMINI_API_KEY || 'YOUR_GEMINI_API_KEY');
-
-  // Generate random point within selected area
-  const generateRandomPoint = (bounds) => {
-    const lat = bounds.south + Math.random() * (bounds.north - bounds.south);
-    const lng = bounds.west + Math.random() * (bounds.east - bounds.west);
-    return { lat, lng };
-  };
-
-  // Fetch Street View image with optimal heading
-  const fetchStreetViewImage = async (lat, lng) => {
-    const apiKey = process.env.REACT_APP_GOOGLE_MAPS_API_KEY || 'YOUR_API_KEY_HERE';
-    
-    // First, try to get the actual road direction
-    const roadDirection = await getRoadDirection(lat, lng);
-    
-    let headings = [];
-    if (roadDirection !== null) {
-      // Use road direction and nearby headings
-      const roadHeading = Math.round(roadDirection);
-      headings = [
-        roadHeading,                    // Exact road direction
-        (roadHeading + 180) % 360,     // Opposite direction
-        (roadHeading + 90) % 360,      // Perpendicular
-        (roadHeading - 90 + 360) % 360 // Other perpendicular
-      ];
-      console.log(`Using road-based headings: ${headings.join(', ')}°`);
-    } else {
-      // Fallback to cardinal directions
-      headings = [0, 90, 180, 270]; // North, East, South, West
-      console.log('No road data available, using cardinal directions');
-    }
-    
-    let bestImage = null;
-    let bestHeading = 0;
-    let bestScore = 0;
-    
-    for (const heading of headings) {
-      try {
-        const url = `https://maps.googleapis.com/maps/api/streetview?size=640x640&location=${lat},${lng}&heading=${heading}&key=${apiKey}`;
-        const response = await fetch(url);
-        
-        if (response.ok) {
-          const blob = await response.blob();
-          const imageDataUrl = await new Promise((resolve) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result);
-            reader.readAsDataURL(blob);
-          });
-          
-          // Analyze the image to determine if it's looking down a street
-          const roadScore = await analyzeStreetViewQuality(imageDataUrl, heading);
-          
-          console.log(`Heading ${heading}° - Road score: ${roadScore.toFixed(3)}`);
-          
-          if (roadScore > bestScore) {
-            bestScore = roadScore;
-            bestImage = imageDataUrl;
-            bestHeading = heading;
-          }
-          
-          // If we found a very good view, stop searching
-          if (roadScore > 0.5) {
-            console.log(`Found excellent street view at heading ${heading}°`);
-            break;
-          }
-        }
-      } catch (error) {
-        console.log(`Failed to fetch Street View at heading ${heading}°:`, error);
-      }
-    }
-    
-    if (bestImage) {
-      console.log(`Using Street View at heading ${bestHeading}° (score: ${bestScore.toFixed(3)})`);
-      return bestImage;
-    } else {
-      throw new Error('Failed to fetch any Street View images');
-    }
-  };
-
-  // Analyze Street View image quality to determine if it's looking down a street
-  const analyzeStreetViewQuality = async (imageDataUrl, heading) => {
-    try {
-      // Create a temporary image to analyze
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      
-      return new Promise((resolve) => {
-        img.onload = () => {
-          // Create a canvas to analyze the image
-          const canvas = document.createElement('canvas');
-          const ctx = canvas.getContext('2d');
-          canvas.width = img.width;
-          canvas.height = img.height;
-          ctx.drawImage(img, 0, 0);
-          
-          // Get image data for analysis
-          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          const data = imageData.data;
-          
-          // Simple analysis: check for road-like patterns
-          // Look for horizontal lines and road-like colors in the bottom portion
-          const roadScore = analyzeRoadPattern(data, canvas.width, canvas.height);
-          
-          // Return the road score for comparison
-          console.log(`Heading ${heading}° - Road score: ${roadScore.toFixed(3)}`);
-          resolve(roadScore);
-        };
-        
-        img.onerror = () => {
-          console.log(`Failed to analyze image at heading ${heading}°`);
-          resolve(false);
-        };
-        
-        img.src = imageDataUrl;
-      });
-    } catch (error) {
-      console.error('Error analyzing Street View quality:', error);
-      return false;
-    }
-  };
-
-  // Get road direction data from Google Maps Roads API
-  const getRoadDirection = async (lat, lng) => {
-    const apiKey = process.env.REACT_APP_GOOGLE_MAPS_API_KEY || 'YOUR_API_KEY_HERE';
-    
-    try {
-      // Use Roads API to get the nearest road and its direction
-      const url = `https://roads.googleapis.com/v1/nearestRoads?points=${lat},${lng}&key=${apiKey}`;
-      const response = await fetch(url);
-      
-      if (response.ok) {
-        const data = await response.json();
-        if (data.snappedPoints && data.snappedPoints.length > 0) {
-          const snappedPoint = data.snappedPoints[0];
-          
-          // Get the road segment to determine direction
-          if (data.snappedPoints.length > 1) {
-            const point1 = data.snappedPoints[0];
-            const point2 = data.snappedPoints[1];
-            
-            // Calculate heading from point1 to point2
-            const heading = calculateHeading(
-              point1.location.latitude, point1.location.longitude,
-              point2.location.latitude, point2.location.longitude
-            );
-            
-            console.log(`Road direction: ${heading.toFixed(1)}°`);
-            return heading;
-          }
-        }
-      }
-    } catch (error) {
-      console.log('Failed to get road direction:', error);
-    }
-    
-    return null; // No road direction available
-  };
-
-  // Calculate heading between two points
-  const calculateHeading = (lat1, lng1, lat2, lng2) => {
-    const dLng = (lng2 - lng1) * Math.PI / 180;
-    const lat1Rad = lat1 * Math.PI / 180;
-    const lat2Rad = lat2 * Math.PI / 180;
-    
-    const y = Math.sin(dLng) * Math.cos(lat2Rad);
-    const x = Math.cos(lat1Rad) * Math.sin(lat2Rad) - Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLng);
-    
-    let heading = Math.atan2(y, x) * 180 / Math.PI;
-    heading = (heading + 360) % 360; // Normalize to 0-360
-    
-    return heading;
-  };
-
-  // Analyze image data for road-like patterns
-  const analyzeRoadPattern = (imageData, width, height) => {
-    let roadPixels = 0;
-    let totalPixels = 0;
-    
-    // Focus on the bottom portion of the image where roads typically are
-    const startY = Math.floor(height * 0.6);
-    const endY = height;
-    
-    for (let y = startY; y < endY; y++) {
-      for (let x = 0; x < width; x++) {
-        const index = (y * width + x) * 4;
-        const r = imageData[index];
-        const g = imageData[index + 1];
-        const b = imageData[index + 2];
-        
-        // Check for road-like colors (gray, black, asphalt-like)
-        const isRoadColor = (
-          // Dark gray to black (asphalt)
-          (r < 80 && g < 80 && b < 80) ||
-          // Medium gray (concrete)
-          (Math.abs(r - g) < 20 && Math.abs(g - b) < 20 && r > 80 && r < 180) ||
-          // Light gray (pavement)
-          (Math.abs(r - g) < 15 && Math.abs(g - b) < 15 && r > 150 && r < 220)
-        );
-        
-        if (isRoadColor) {
-          roadPixels++;
-        }
-        totalPixels++;
-      }
-    }
-    
-    return totalPixels > 0 ? roadPixels / totalPixels : 0;
-  };
-
-  // Analyze image with Gemini AI
-  const analyzeImageWithAI = async (imageDataUrl) => {
-    try {
-      setLoadingMessage('Analyzing image with AI...');
-      
-      const model = genAI.getGenerativeModel({ model: "gemini-pro-vision" });
-      
-      // Convert base64 to Uint8Array
-      const base64Data = imageDataUrl.split(',')[1];
-      const imageBytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
-      
-      const prompt = `Analyze this urban street scene. What elements are present: road, sidewalk, buildings, trees, bushes, greenery? Suggest realistic improvements to reduce heat island effect. Return JSON:
-
-{
-  "has_road": true,
-  "has_sidewalk": true,
-  "has_building": true,
-  "add_trees": true,
-  "add_bushes": true,
-  "suggested_changes": "Add shade trees along the sidewalk and bushes near buildings."
-}`;
-
-      const result = await model.generateContent([prompt, { inlineData: { data: base64Data, mimeType: "image/jpeg" } }]);
-      const response = await result.response;
-      const text = response.text();
-      
-      // Extract JSON from response
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        console.log('AI Analysis Result:', parsed);
-        return parsed;
-      } else {
-        // Fallback if JSON parsing fails
-        console.log('AI Analysis failed, using fallback');
-        return {
-          has_road: true,
-          has_sidewalk: true,
-          has_building: true,
-          add_trees: true,
-          add_bushes: true,
-          suggested_changes: "Add more greenery and shade trees to reduce urban heat island effect."
-        };
-      }
-    } catch (error) {
-      console.error('Error analyzing image:', error);
-      // Return default values if AI analysis fails
-      return {
-        has_road: true,
-        has_sidewalk: true,
-        has_building: true,
-        add_trees: true,
-        add_bushes: true,
-        suggested_changes: "Add more greenery and shade trees to reduce urban heat island effect."
-      };
-    }
-  };
-
-  // Initialize Three.js scene
-  const initThreeJS = () => {
-    const canvas = canvasRef.current;
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x87CEEB); // Sky blue background
-    
-    // Camera
-    const camera = new THREE.PerspectiveCamera(75, canvas.clientWidth / canvas.clientHeight, 0.1, 1000);
-    camera.position.set(0, 5, 10);
-    camera.lookAt(0, 0, 0);
-    
-    // Renderer
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-    renderer.setSize(canvas.clientWidth, canvas.clientHeight);
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    
-    // Lighting
-    const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
-    scene.add(ambientLight);
-    
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    directionalLight.position.set(10, 10, 5);
-    directionalLight.castShadow = true;
-    directionalLight.shadow.mapSize.width = 2048;
-    directionalLight.shadow.mapSize.height = 2048;
-    scene.add(directionalLight);
-    
-    // Ground plane
-    const groundGeometry = new THREE.PlaneGeometry(20, 20);
-    const groundMaterial = new THREE.MeshLambertMaterial({ color: 0x90EE90 });
-    const ground = new THREE.Mesh(groundGeometry, groundMaterial);
-    ground.rotation.x = -Math.PI / 2;
-    ground.receiveShadow = true;
-    scene.add(ground);
-    
-    // Add OrbitControls
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true; // Add smooth damping
-    controls.dampingFactor = 0.05;
-    controls.screenSpacePanning = false;
-    controls.minDistance = 3; // Minimum zoom distance
-    controls.maxDistance = 20; // Maximum zoom distance
-    controls.maxPolarAngle = Math.PI / 2; // Prevent going below ground
-    controls.enablePan = true; // Enable panning
-    controls.enableZoom = true; // Enable zooming
-    controls.enableRotate = true; // Enable rotation
-    
-    // Enable touch controls for mobile
-    controls.enableTouch = true;
-    controls.touches = {
-      ONE: THREE.TOUCH.ROTATE,
-      TWO: THREE.TOUCH.DOLLY_PAN
-    };
-    
-    sceneRef.current = scene;
-    cameraRef.current = camera;
-    rendererRef.current = renderer;
-    controlsRef.current = controls;
-    
-    // Animation loop
-    const animate = () => {
-      requestAnimationFrame(animate);
-      controls.update(); // Update controls in animation loop
-      renderer.render(scene, camera);
-    };
-    animate();
-  };
-
-  // Build 3D model based on AI analysis
-  const build3DModel = (aiAnalysis) => {
-    const scene = sceneRef.current;
-    if (!scene) return;
-    
-    console.log('Building 3D model with AI analysis:', aiAnalysis);
-    
-    // Clear existing model elements (except ground and lights)
-    const objectsToRemove = [];
-    scene.children.forEach(child => {
-      if (child.type === 'Mesh' && child.geometry.type !== 'PlaneGeometry') {
-        objectsToRemove.push(child);
-      }
-    });
-    objectsToRemove.forEach(obj => scene.remove(obj));
-    
-    // Road
-    if (aiAnalysis.has_road) {
-      const roadWidth = 6 + Math.random() * 4; // 6-10 units wide
-      const roadGeometry = new THREE.BoxGeometry(roadWidth, 0.1, 2);
-      const roadMaterial = new THREE.MeshLambertMaterial({ color: 0x333333 });
-      const road = new THREE.Mesh(roadGeometry, roadMaterial);
-      road.position.set(0, 0.05, 0);
-      road.castShadow = true;
-      road.receiveShadow = true;
-      scene.add(road);
-      
-      // Road markings (center line)
-      const markingGeometry = new THREE.BoxGeometry(roadWidth, 0.11, 0.1);
-      const markingMaterial = new THREE.MeshLambertMaterial({ color: 0xFFFFFF });
-      const marking = new THREE.Mesh(markingGeometry, markingMaterial);
-      marking.position.set(0, 0.06, 0);
-      scene.add(marking);
-      
-      // Additional road markings (dashed lines)
-      if (Math.random() > 0.5) {
-        for (let i = 0; i < 3; i++) {
-          const dashGeometry = new THREE.BoxGeometry(1, 0.11, 0.1);
-          const dashMaterial = new THREE.MeshLambertMaterial({ color: 0xFFFFFF });
-          const dash = new THREE.Mesh(dashGeometry, dashMaterial);
-          dash.position.set(-2 + i * 2, 0.06, 0);
-          scene.add(dash);
-        }
-      }
-    }
-    
-    // Sidewalk
-    if (aiAnalysis.has_sidewalk) {
-      const sidewalkGeometry = new THREE.BoxGeometry(2, 0.1, 8);
-      const sidewalkMaterial = new THREE.MeshLambertMaterial({ color: 0xCCCCCC });
-      const sidewalk = new THREE.Mesh(sidewalkGeometry, sidewalkMaterial);
-      sidewalk.position.set(-5, 0.05, 0);
-      sidewalk.castShadow = true;
-      sidewalk.receiveShadow = true;
-      scene.add(sidewalk);
-      
-      const sidewalk2 = new THREE.Mesh(sidewalkGeometry, sidewalkMaterial);
-      sidewalk2.position.set(5, 0.05, 0);
-      sidewalk2.castShadow = true;
-      sidewalk2.receiveShadow = true;
-      scene.add(sidewalk2);
-    }
-    
-    // Buildings
-    if (aiAnalysis.has_building) {
-      const buildingCount = Math.floor(Math.random() * 3) + 1; // 1-3 buildings
-      const buildingColors = [0x8B4513, 0x696969, 0x2F4F4F, 0x708090];
-      
-      for (let i = 0; i < buildingCount; i++) {
-        const height = 2 + Math.random() * 4; // 2-6 units tall
-        const width = 2 + Math.random() * 2; // 2-4 units wide
-        const depth = 2 + Math.random() * 2; // 2-4 units deep
-        
-        const buildingGeometry = new THREE.BoxGeometry(width, height, depth);
-        const buildingMaterial = new THREE.MeshLambertMaterial({ 
-          color: buildingColors[Math.floor(Math.random() * buildingColors.length)] 
-        });
-        const building = new THREE.Mesh(buildingGeometry, buildingMaterial);
-        
-        // Random positions along the street
-        const xPos = -8 + Math.random() * 16; // -8 to 8
-        building.position.set(xPos, height/2, -2 + Math.random() * 4);
-        building.castShadow = true;
-        building.receiveShadow = true;
-        scene.add(building);
-      }
-    }
-    
-    // Trees
-    if (aiAnalysis.add_trees) {
-      const treeCount = Math.floor(Math.random() * 5) + 2; // 2-6 trees
-      const treeColors = [0x228B22, 0x32CD32, 0x006400, 0x228B22];
-      
-      for (let i = 0; i < treeCount; i++) {
-        // Tree trunk
-        const trunkHeight = 1.5 + Math.random() * 1.5; // 1.5-3 units tall
-        const trunkRadius = 0.1 + Math.random() * 0.2; // 0.1-0.3 radius
-        const trunkGeometry = new THREE.CylinderGeometry(trunkRadius, trunkRadius * 1.2, trunkHeight);
-        const trunkMaterial = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
-        const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
-        
-        // Random positions along sidewalks
-        const xPos = -6 + Math.random() * 12; // -6 to 6
-        const zPos = Math.random() > 0.5 ? 4 : -4; // Either side of road
-        trunk.position.set(xPos, trunkHeight/2, zPos);
-        trunk.castShadow = true;
-        trunk.receiveShadow = true;
-        scene.add(trunk);
-        
-        // Tree leaves
-        const leafSize = 0.8 + Math.random() * 0.6; // 0.8-1.4 size
-        const leavesGeometry = new THREE.SphereGeometry(leafSize, 8, 8);
-        const leavesMaterial = new THREE.MeshLambertMaterial({ 
-          color: treeColors[Math.floor(Math.random() * treeColors.length)] 
-        });
-        const leaves = new THREE.Mesh(leavesGeometry, leavesMaterial);
-        leaves.position.set(xPos, trunkHeight + leafSize * 0.7, zPos);
-        leaves.castShadow = true;
-        leaves.receiveShadow = true;
-        scene.add(leaves);
-      }
-    }
-    
-    // Bushes
-    if (aiAnalysis.add_bushes) {
-      const bushCount = Math.floor(Math.random() * 6) + 3; // 3-8 bushes
-      const bushColors = [0x006400, 0x228B22, 0x32CD32, 0x556B2F];
-      
-      for (let i = 0; i < bushCount; i++) {
-        const bushSize = 0.3 + Math.random() * 0.4; // 0.3-0.7 size
-        const bushGeometry = new THREE.SphereGeometry(bushSize, 8, 8);
-        const bushMaterial = new THREE.MeshLambertMaterial({ 
-          color: bushColors[Math.floor(Math.random() * bushColors.length)] 
-        });
-        const bush = new THREE.Mesh(bushGeometry, bushMaterial);
-        
-        // Random positions around buildings and sidewalks
-        const xPos = -8 + Math.random() * 16; // -8 to 8
-        const zPos = -5 + Math.random() * 10; // -5 to 5
-        bush.position.set(xPos, bushSize, zPos);
-        bush.castShadow = true;
-        bush.receiveShadow = true;
-        scene.add(bush);
-      }
-    }
-    
-    // Add some decorative elements based on AI suggestions
-    if (aiAnalysis.suggested_changes && aiAnalysis.suggested_changes.includes('shade')) {
-      // Add awnings or canopies
-      const awningGeometry = new THREE.BoxGeometry(2, 0.1, 1);
-      const awningMaterial = new THREE.MeshLambertMaterial({ color: 0x8B0000 });
-      const awning = new THREE.Mesh(awningGeometry, awningMaterial);
-      awning.position.set(-3, 3, 2);
-      awning.castShadow = true;
-      scene.add(awning);
-    }
-    
-    if (aiAnalysis.suggested_changes && aiAnalysis.suggested_changes.includes('green')) {
-      // Add some grass patches
-      for (let i = 0; i < 3; i++) {
-        const grassGeometry = new THREE.PlaneGeometry(1, 1);
-        const grassMaterial = new THREE.MeshLambertMaterial({ color: 0x90EE90 });
-        const grass = new THREE.Mesh(grassGeometry, grassMaterial);
-        grass.rotation.x = -Math.PI / 2;
-        grass.position.set(-4 + i * 2, 0.01, 3);
-        scene.add(grass);
-      }
-    }
-    
-    // Add some random street furniture
-    if (Math.random() > 0.5) {
-      // Street lamp
-      const lampPostGeometry = new THREE.CylinderGeometry(0.1, 0.1, 3);
-      const lampPostMaterial = new THREE.MeshLambertMaterial({ color: 0x696969 });
-      const lampPost = new THREE.Mesh(lampPostGeometry, lampPostMaterial);
-      lampPost.position.set(4, 1.5, 3);
-      lampPost.castShadow = true;
-      scene.add(lampPost);
-      
-      // Lamp light
-      const lampGeometry = new THREE.SphereGeometry(0.3, 8, 8);
-      const lampMaterial = new THREE.MeshLambertMaterial({ color: 0xFFFF00 });
-      const lamp = new THREE.Mesh(lampGeometry, lampMaterial);
-      lamp.position.set(4, 3, 3);
-      scene.add(lamp);
-    }
-  };
-
-  // Generate random location within selected area
-  const generateRandomLocation = () => {
-    const bounds = selectedArea.bounds;
-    const lat = bounds.south + Math.random() * (bounds.north - bounds.south);
-    const lng = bounds.west + Math.random() * (bounds.east - bounds.west);
-    return { lat, lng };
-  };
-
-  // Handle manual coordinate input
-  const handleCoordinateInput = (type, value) => {
-    const numValue = parseFloat(value);
-    if (isNaN(numValue)) return;
-    
-    const bounds = selectedArea.bounds;
-    let newLocation = { ...currentLocation } || generateRandomLocation();
-    
-    if (type === 'lat') {
-      // Ensure latitude is within bounds
-      newLocation.lat = Math.max(bounds.south, Math.min(bounds.north, numValue));
-    } else if (type === 'lng') {
-      // Ensure longitude is within bounds
-      newLocation.lng = Math.max(bounds.west, Math.min(bounds.east, numValue));
-    }
-    
-    setCurrentLocation(newLocation);
-  };
-
-  // Reset camera to default position
-  const resetCamera = () => {
-    if (cameraRef.current && controlsRef.current) {
-      cameraRef.current.position.set(0, 5, 10);
-      cameraRef.current.lookAt(0, 0, 0);
-      controlsRef.current.reset();
-    }
-  };
-
-  // Load Street View and generate 3D model for a specific location
-  const loadViewForLocation = async (location) => {
-    if (!location) return;
-    
-    setIsLoading(true);
-    setLoadingMessage('Fetching Street View image...');
-    
-    try {
-      const imageDataUrl = await fetchStreetViewImage(location.lat, location.lng);
-      setStreetViewImage(imageDataUrl);
-      
-      setLoadingMessage('Analyzing with AI...');
-      const aiAnalysis = await analyzeImageWithAI(imageDataUrl);
-      
-      setLoadingMessage('Building 3D model...');
-      build3DModel(aiAnalysis);
-      
-      setAiSuggestion(aiAnalysis.suggested_changes);
-      setIsLoading(false);
-      
-    } catch (error) {
-      console.error('Error loading view for location:', error);
-      setLoadingMessage('Error loading view. Please try again.');
-      setIsLoading(false);
-    }
-  };
-
-  // Load new Street View and generate 3D model
-  const loadNewView = async () => {
-    if (!selectedArea?.bounds) return;
-    
-    setIsLoading(true);
-    setLoadingMessage('Generating random location...');
-    
-    try {
-      // Generate random point
-      const randomPoint = generateRandomPoint(selectedArea.bounds);
-      setCurrentLocation(randomPoint);
-      
-      await loadViewForLocation(randomPoint);
-      
-    } catch (error) {
-      console.error('Error loading new view:', error);
-      setLoadingMessage('Error loading view. Please try again.');
-      setIsLoading(false);
-    }
-  };
-
-  // Initialize on mount
   useEffect(() => {
-    if (selectedArea?.bounds) {
-      initThreeJS();
-      loadNewView();
-    }
-    
+    if (!selectedArea) return;
+
+    const initScene = async () => {
+      try {
+        setLoadingMessage('Setting up 3D environment...');
+        
+        // Initialize Three.js scene
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87CEEB); // Sky blue background
+        
+        // Set up camera
+        const camera = new THREE.PerspectiveCamera(
+          75,
+          canvasRef.current.clientWidth / canvasRef.current.clientHeight,
+          0.1,
+          1000
+        );
+        camera.position.set(0, 5, 10);
+        
+        // Set up renderer
+        const renderer = new THREE.WebGLRenderer({ 
+          canvas: canvasRef.current,
+          antialias: true 
+        });
+        renderer.setSize(canvasRef.current.clientWidth, canvasRef.current.clientHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        
+        // Add lights
+        const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+        scene.add(ambientLight);
+        
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(10, 10, 5);
+        directionalLight.castShadow = true;
+        scene.add(directionalLight);
+        
+        // Add ground
+        const groundGeometry = new THREE.PlaneGeometry(20, 20);
+        const groundMaterial = new THREE.MeshLambertMaterial({ color: 0x90EE90 });
+        const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+        ground.rotation.x = -Math.PI / 2;
+        ground.receiveShadow = true;
+        scene.add(ground);
+        
+        // Store references
+        sceneRef.current = scene;
+        cameraRef.current = camera;
+        rendererRef.current = renderer;
+        
+        setLoadingMessage('Generating 3D model with Gemini...');
+        
+        // Generate 3D model based on location
+        await generate3DModel(scene, selectedArea);
+        
+        // Get street view image
+        await getStreetViewImage(selectedArea);
+        
+        // Analyze with Gemini
+        await analyzeWithGemini(selectedArea);
+        
+        setLoading(false);
+        
+        // Start render loop
+        animate();
+        
+      } catch (error) {
+        console.error('Error initializing 3D scene:', error);
+        setLoadingMessage('Error initializing scene. Please try again.');
+      }
+    };
+
+    initScene();
+
     return () => {
+      // Cleanup
       if (rendererRef.current) {
         rendererRef.current.dispose();
       }
     };
   }, [selectedArea]);
 
-  // Handle window resize
-  useEffect(() => {
-    const handleResize = () => {
-      if (rendererRef.current && cameraRef.current && canvasRef.current) {
-        const canvas = canvasRef.current;
-        cameraRef.current.aspect = canvas.clientWidth / canvas.clientHeight;
-        cameraRef.current.updateProjectionMatrix();
-        rendererRef.current.setSize(canvas.clientWidth, canvas.clientHeight);
-      }
-    };
+  const generate3DModel = async (scene, area) => {
+    // Create a simple 3D model based on the selected point
+    // This would typically call Gemini API to generate more complex models
+    
+    // For now, create a simple building representation
+    const buildingGeometry = new THREE.BoxGeometry(2, 4, 2);
+    const buildingMaterial = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
+    const building = new THREE.Mesh(buildingGeometry, buildingMaterial);
+    building.position.set(0, 2, 0);
+    building.castShadow = true;
+    scene.add(building);
+    
+    // Add some trees
+    for (let i = 0; i < 3; i++) {
+      const treeGeometry = new THREE.CylinderGeometry(0.2, 0.3, 3);
+      const treeMaterial = new THREE.MeshLambertMaterial({ color: 0x228B22 });
+      const tree = new THREE.Mesh(treeGeometry, treeMaterial);
+      tree.position.set(-3 + i * 3, 1.5, -2);
+      tree.castShadow = true;
+      scene.add(tree);
+    }
+  };
 
+  const getStreetViewImage = async (area) => {
+    try {
+      const { lat, lng } = area.coordinates[0];
+      const apiKey = process.env.REACT_APP_GOOGLE_MAPS_API_KEY;
+      const url = `https://maps.googleapis.com/maps/api/streetview?size=400x200&location=${lat},${lng}&key=${apiKey}`;
+      setStreetViewUrl(url);
+    } catch (error) {
+      console.error('Error getting street view:', error);
+    }
+  };
+
+  const analyzeWithGemini = async (area) => {
+    try {
+      // This would call the Gemini API to analyze the location
+      // For now, provide a sample analysis
+      const analysis = `Location Analysis for ${area.point?.areaName || 'Selected Point'}:
+      
+🌡️ UHI Intensity: ${area.point?.uhiIntensity || 'N/A'}°C hotter than rural average
+
+🏗️ Urban Elements Detected:
+• Commercial buildings
+• Concrete surfaces
+• Limited green space
+• High traffic areas
+
+🌱 Recommendations for Heat Reduction:
+• Add rooftop gardens
+• Plant street trees
+• Use reflective materials
+• Increase green infrastructure
+
+This area shows typical urban heat island characteristics with high surface temperatures due to human activities and building materials.`;
+
+      setGeminiAnalysis(analysis);
+    } catch (error) {
+      console.error('Error analyzing with Gemini:', error);
+      setGeminiAnalysis('Analysis unavailable at this time.');
+    }
+  };
+
+  const animate = () => {
+    if (!sceneRef.current || !cameraRef.current || !rendererRef.current) return;
+    
+    requestAnimationFrame(animate);
+    
+    // Simple rotation animation
+    if (sceneRef.current.children.length > 0) {
+      const building = sceneRef.current.children.find(child => 
+        child.geometry && child.geometry.type === 'BoxGeometry'
+      );
+      if (building) {
+        building.rotation.y += 0.005;
+      }
+    }
+    
+    rendererRef.current.render(sceneRef.current, cameraRef.current);
+  };
+
+  const handleResize = () => {
+    if (!canvasRef.current || !cameraRef.current || !rendererRef.current) return;
+    
+    const width = canvasRef.current.clientWidth;
+    const height = canvasRef.current.clientHeight;
+    
+    cameraRef.current.aspect = width / height;
+    cameraRef.current.updateProjectionMatrix();
+    rendererRef.current.setSize(width, height);
+  };
+
+  useEffect(() => {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-
-
   if (!selectedArea) return null;
 
   return (
-    <Container>
-      <Header>
-        <h2>🌳 3D Urban Heat Island Reduction Model</h2>
-        <Controls>
-          <ActionButton onClick={() => setIsSelectingLocation(true)} disabled={isLoading}>
-            📍 Select Location
-          </ActionButton>
-          <ActionButton onClick={loadNewView} disabled={isLoading}>
-            🔄 Random View
-          </ActionButton>
+    <Modal>
+      <ModalContent>
+        <Header>
+          <Title>🌳 3D Urban Analysis - {selectedArea.point?.areaName || 'Selected Location'}</Title>
           <CloseButton onClick={onClose}>✕ Close</CloseButton>
-        </Controls>
-      </Header>
-      
-      <Canvas>
-        <canvas ref={canvasRef} style={{ width: '100%', height: '100%' }} />
+        </Header>
         
-        {isLoading && (
-          <LoadingOverlay>
-            <div>{loadingMessage}</div>
-          </LoadingOverlay>
-        )}
-
-        {isSelectingLocation && (
-          <LocationSelector>
-            <h3>📍 Select Street View Location</h3>
-            <SelectionInstructions>
-              Enter coordinates or use the random generator to select a location within your selected area.
-            </SelectionInstructions>
-            
-            <BoundsInfo>
-              <strong>Selected Area Bounds:</strong><br/>
-              North: {selectedArea.bounds.north.toFixed(4)} | South: {selectedArea.bounds.south.toFixed(4)}<br/>
-              East: {selectedArea.bounds.east.toFixed(4)} | West: {selectedArea.bounds.west.toFixed(4)}
-            </BoundsInfo>
-            
-            <CoordinateInput>
-              <InputGroup>
-                <InputLabel>Latitude</InputLabel>
-                <CoordinateInputField
-                  type="number"
-                  step="0.0001"
-                  placeholder="43.6532"
-                  value={currentLocation?.lat?.toFixed(4) || ''}
-                  onChange={(e) => handleCoordinateInput('lat', e.target.value)}
-                />
-              </InputGroup>
-              
-              <InputGroup>
-                <InputLabel>Longitude</InputLabel>
-                <CoordinateInputField
-                  type="number"
-                  step="0.0001"
-                  placeholder="-79.3832"
-                  value={currentLocation?.lng?.toFixed(4) || ''}
-                  onChange={(e) => handleCoordinateInput('lng', e.target.value)}
-                />
-              </InputGroup>
-            </CoordinateInput>
-            
-            <ButtonGroup>
-              <SelectButton onClick={() => {
-                const randomLoc = generateRandomLocation();
-                setCurrentLocation(randomLoc);
-              }}>
-                🎲 Random Location
-              </SelectButton>
-            </ButtonGroup>
-            
-            <ButtonGroup>
-              <SelectButton 
-                primary 
-                onClick={() => {
-                  if (currentLocation) {
-                    setIsSelectingLocation(false);
-                    loadViewForLocation(currentLocation);
-                  }
-                }}
-                disabled={!currentLocation}
-              >
-                🚀 Generate 3D Model
-              </SelectButton>
-              <SelectButton onClick={() => {
-                setIsSelectingLocation(false);
-                setCurrentLocation(null);
-              }}>
-                ❌ Cancel
-              </SelectButton>
-            </ButtonGroup>
-            
-            {currentLocation && (
-              <div style={{ marginTop: '10px', fontSize: '12px', opacity: 0.8 }}>
-                Selected: {currentLocation.lat.toFixed(4)}, {currentLocation.lng.toFixed(4)}
-              </div>
+        <Content>
+          <LeftPanel>
+            <Canvas ref={canvasRef} />
+            {loading && (
+              <LoadingOverlay>
+                <div>{loadingMessage}</div>
+              </LoadingOverlay>
             )}
-          </LocationSelector>
-        )}
-        
-        <ControlsInfo>
-          <strong>🎮 Controls:</strong><br/>
-          • <strong>Mouse:</strong> Click & drag to rotate<br/>
-          • <strong>Scroll:</strong> Zoom in/out<br/>
-          • <strong>Right-click:</strong> Pan around<br/>
-          • <strong>Mobile:</strong> Touch & drag to rotate, pinch to zoom
-        </ControlsInfo>
-        
-        <ResetCameraButton onClick={resetCamera}>
-          📷 Reset Camera
-        </ResetCameraButton>
-        
-        <ToggleImageButton onClick={() => setShowStreetView(!showStreetView)}>
-          {showStreetView ? '📸 Hide Image' : '📸 Show Image'}
-        </ToggleImageButton>
-        
-        {streetViewImage && showStreetView && (
-          <StreetViewImage>
-            <ImageTitle>📸 Original Street View</ImageTitle>
-            <StreetViewImg src={streetViewImage} alt="Street View" />
-            {currentLocation && (
-              <LocationInfo>
-                📍 {currentLocation.lat.toFixed(4)}, {currentLocation.lng.toFixed(4)}
-              </LocationInfo>
+          </LeftPanel>
+          
+          <RightPanel>
+            <InfoSection>
+              <InfoTitle>📍 Location Details</InfoTitle>
+              <InfoText>
+                <strong>Coordinates:</strong> {selectedArea.coordinates[0].lat.toFixed(6)}, {selectedArea.coordinates[0].lng.toFixed(6)}
+              </InfoText>
+              <InfoText>
+                <strong>UHI Intensity:</strong> {selectedArea.point?.uhiIntensity || 'N/A'}°C hotter than rural average
+              </InfoText>
+            </InfoSection>
+            
+            {streetViewUrl && (
+              <InfoSection>
+                <InfoTitle>🏙️ Street View</InfoTitle>
+                <StreetViewImage src={streetViewUrl} alt="Street View" />
+              </InfoSection>
             )}
-          </StreetViewImage>
-        )}
-        
-        {aiSuggestion && (
-          <AISuggestion>
-            <strong>🤖 AI Suggestion:</strong> {aiSuggestion}
-          </AISuggestion>
-        )}
-      </Canvas>
-    </Container>
+            
+            {geminiAnalysis && (
+              <InfoSection>
+                <InfoTitle>🤖 Gemini AI Analysis</InfoTitle>
+                <InfoText style={{ whiteSpace: 'pre-line' }}>
+                  {geminiAnalysis}
+                </InfoText>
+              </InfoSection>
+            )}
+          </RightPanel>
+        </Content>
+      </ModalContent>
+    </Modal>
   );
 };
 
