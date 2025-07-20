@@ -20,39 +20,45 @@ const OBJECT_CONFIGS = {
     geometry: new THREE.BoxGeometry(2, 3, 2),
     material: new THREE.MeshLambertMaterial({ color: 0x8B4513 }),
     defaultPosition: [0, 1.5, 0],
-    name: 'House'
+    name: 'House',
+    rotatable: false
   },
   [OBJECT_TYPES.ROAD]: {
     geometry: new THREE.PlaneGeometry(8, 2),
     material: new THREE.MeshLambertMaterial({ color: 0x2C2C2C }),
     defaultPosition: [0, 0.01, 0],
     rotation: [-Math.PI / 2, 0, 0],
-    name: 'Road'
+    name: 'Road',
+    rotatable: true
   },
   [OBJECT_TYPES.TREE]: {
     geometry: new THREE.CylinderGeometry(0.2, 0.3, 3),
     material: new THREE.MeshLambertMaterial({ color: 0x8B4513 }),
     defaultPosition: [0, 1.5, 0],
-    name: 'Tree Trunk'
+    name: 'Tree Trunk',
+    rotatable: false
   },
   [OBJECT_TYPES.SIDEWALK]: {
     geometry: new THREE.PlaneGeometry(1.5, 8),
     material: new THREE.MeshLambertMaterial({ color: 0xD3D3D3 }),
     defaultPosition: [0, 0.02, 0],
     rotation: [-Math.PI / 2, 0, 0],
-    name: 'Sidewalk'
+    name: 'Sidewalk',
+    rotatable: true
   },
   [OBJECT_TYPES.STREET_LIGHT]: {
     geometry: new THREE.CylinderGeometry(0.1, 0.1, 4),
     material: new THREE.MeshLambertMaterial({ color: 0x696969 }),
     defaultPosition: [0, 2, 0],
-    name: 'Street Light'
+    name: 'Street Light',
+    rotatable: false
   },
   [OBJECT_TYPES.BENCH]: {
     geometry: new THREE.BoxGeometry(1.5, 0.3, 0.5),
     material: new THREE.MeshLambertMaterial({ color: 0x8B4513 }),
     defaultPosition: [0, 0.15, 0],
-    name: 'Bench'
+    name: 'Bench',
+    rotatable: false
   }
 };
 
@@ -325,6 +331,11 @@ const StreetView3D = ({ selectedArea, onClose }) => {
   const [dragPlane] = useState(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0));
   const [raycaster] = useState(new THREE.Raycaster());
   const [mouse] = useState(new THREE.Vector2());
+  
+  // Gizmo state
+  const [gizmoGroup, setGizmoGroup] = useState(null);
+  const [isRotating, setIsRotating] = useState(false);
+  const [rotationAxis, setRotationAxis] = useState(null);
 
   useEffect(() => {
     if (!selectedArea) return;
@@ -440,6 +451,9 @@ const StreetView3D = ({ selectedArea, onClose }) => {
     setSceneObjects([]);
     setSelectedObject(null);
     
+    // Collect all objects to add at once
+    const newSceneObjects = [];
+    
     if (!geminiData) {
       // Fallback model if no Gemini data
       const buildingGeometry = new THREE.BoxGeometry(2, 4, 2);
@@ -451,15 +465,17 @@ const StreetView3D = ({ selectedArea, onClose }) => {
       scene.add(building);
       
       // Add to scene objects list
-      setSceneObjects([{
+      newSceneObjects.push({
         id: 'fallback-building',
         type: 'ai-building',
         name: 'AI Building',
         mesh: building,
         position: [0, 2, 0],
         rotation: [0, 0, 0],
-        scale: [1, 1, 1]
-      }]);
+        scale: [1, 1, 1],
+        rotatable: false
+      });
+      setSceneObjects(newSceneObjects);
       return;
     }
 
@@ -511,15 +527,16 @@ const StreetView3D = ({ selectedArea, onClose }) => {
       scene.add(road);
       
       // Add road to scene objects
-      setSceneObjects(prev => [...prev, {
+      newSceneObjects.push({
         id: 'ai-road',
         type: 'ai-road',
         name: 'AI Road',
         mesh: road,
         position: [0, 0.01, 0],
         rotation: [-Math.PI / 2, 0, 0],
-        scale: [1, 1, 1]
-      }]);
+        scale: [1, 1, 1],
+        rotatable: true
+      });
       
       // Add lane markings based on number of lanes
       if (roadLanes >= 2) {
@@ -564,7 +581,7 @@ const StreetView3D = ({ selectedArea, onClose }) => {
       scene.add(sidewalk2);
       
       // Add sidewalks to scene objects
-      setSceneObjects(prev => [...prev, 
+      newSceneObjects.push(
         {
           id: 'ai-sidewalk-1',
           type: 'ai-sidewalk',
@@ -572,7 +589,8 @@ const StreetView3D = ({ selectedArea, onClose }) => {
           mesh: sidewalk,
           position: [-2.5 - sidewalkWidth * 0.5, 0.01, 0],
           rotation: [-Math.PI / 2, 0, 0],
-          scale: [1, 1, 1]
+          scale: [1, 1, 1],
+          rotatable: true
         },
         {
           id: 'ai-sidewalk-2',
@@ -581,9 +599,10 @@ const StreetView3D = ({ selectedArea, onClose }) => {
           mesh: sidewalk2,
           position: [2.5 + sidewalkWidth * 0.5, 0.01, 0],
           rotation: [-Math.PI / 2, 0, 0],
-          scale: [1, 1, 1]
+          scale: [1, 1, 1],
+          rotatable: true
         }
-      ]);
+      );
     }
 
     // Generate buildings based on detailed building data
@@ -609,15 +628,16 @@ const StreetView3D = ({ selectedArea, onClose }) => {
         scene.add(buildingMesh);
         
         // Add building to scene objects
-        setSceneObjects(prev => [...prev, {
+        newSceneObjects.push({
           id: `ai-building-${index}`,
           type: 'ai-building',
           name: `AI Building ${index + 1}`,
           mesh: buildingMesh,
           position: [xPos, height / 2, -3],
           rotation: [0, 0, 0],
-          scale: [1, 1, 1]
-        }]);
+          scale: [1, 1, 1],
+          rotatable: false
+        });
         
         // Add windows based on window description
         if (building.windows !== 'none') {
@@ -665,15 +685,16 @@ const StreetView3D = ({ selectedArea, onClose }) => {
         scene.add(building);
         
         // Add fallback building to scene objects
-        setSceneObjects(prev => [...prev, {
+        newSceneObjects.push({
           id: `ai-building-fallback-${i}`,
           type: 'ai-building',
           name: `AI Building ${i + 1}`,
           mesh: building,
           position: [-4 + i * 3, height / 2, -3],
           rotation: [0, 0, 0],
-          scale: [1, 1, 1]
-        }]);
+          scale: [1, 1, 1],
+          rotatable: false
+        });
       }
     }
 
@@ -717,7 +738,7 @@ const StreetView3D = ({ selectedArea, onClose }) => {
         scene.add(leaves);
         
         // Add tree to scene objects
-        setSceneObjects(prev => [...prev, {
+        newSceneObjects.push({
           id: `ai-tree-${index}`,
           type: 'ai-tree',
           name: `AI Tree ${index + 1}`,
@@ -725,8 +746,9 @@ const StreetView3D = ({ selectedArea, onClose }) => {
           leaves: leaves,
           position: [xPos, trunkHeight / 2, zPos],
           rotation: [0, 0, 0],
-          scale: [1, 1, 1]
-        }]);
+          scale: [1, 1, 1],
+          rotatable: false
+        });
         
         // Additional foliage for larger trees
         if (treeSize > 1) {
@@ -758,7 +780,7 @@ const StreetView3D = ({ selectedArea, onClose }) => {
         scene.add(leaves);
         
         // Add fallback tree to scene objects
-        setSceneObjects(prev => [...prev, {
+        newSceneObjects.push({
           id: `ai-tree-fallback-${i}`,
           type: 'ai-tree',
           name: `AI Tree ${i + 1}`,
@@ -766,8 +788,9 @@ const StreetView3D = ({ selectedArea, onClose }) => {
           leaves: leaves,
           position: [-6 + i * 2.5, 1.25, 3],
           rotation: [0, 0, 0],
-          scale: [1, 1, 1]
-        }]);
+          scale: [1, 1, 1],
+          rotatable: false
+        });
       }
     }
 
@@ -780,6 +803,7 @@ const StreetView3D = ({ selectedArea, onClose }) => {
           const pole = new THREE.Mesh(poleGeometry, poleMaterial);
           pole.position.set(-3 + index * 6, 2, 1.5);
           pole.castShadow = true;
+          pole.userData = { objectId: `ai-street-light-${index}` };
           scene.add(pole);
           
           const lightGeometry = new THREE.SphereGeometry(0.2, 8, 8);
@@ -787,21 +811,61 @@ const StreetView3D = ({ selectedArea, onClose }) => {
           const light = new THREE.Mesh(lightGeometry, lightMaterial);
           light.position.set(-3 + index * 6, 4.2, 1.5);
           light.castShadow = true;
+          light.userData = { objectId: `ai-street-light-${index}`, isLight: true };
           scene.add(light);
+          
+          // Add street light to scene objects
+          newSceneObjects.push({
+            id: `ai-street-light-${index}`,
+            type: 'ai-street-light',
+            name: `AI Street Light ${index + 1}`,
+            mesh: pole,
+            light: light,
+            position: [-3 + index * 6, 2, 1.5],
+            rotation: [0, 0, 0],
+            scale: [1, 1, 1],
+            rotatable: false
+          });
         } else if (feature === 'parking_meters') {
           const meterGeometry = new THREE.BoxGeometry(0.1, 1.5, 0.1);
           const meterMaterial = new THREE.MeshLambertMaterial({ color: 0x4169E1 });
           const meter = new THREE.Mesh(meterGeometry, meterMaterial);
           meter.position.set(-2 + index * 2, 0.75, 1.2);
           meter.castShadow = true;
+          meter.userData = { objectId: `ai-parking-meter-${index}` };
           scene.add(meter);
+          
+          // Add parking meter to scene objects
+          newSceneObjects.push({
+            id: `ai-parking-meter-${index}`,
+            type: 'ai-parking-meter',
+            name: `AI Parking Meter ${index + 1}`,
+            mesh: meter,
+            position: [-2 + index * 2, 0.75, 1.2],
+            rotation: [0, 0, 0],
+            scale: [1, 1, 1],
+            rotatable: false
+          });
         } else if (feature === 'benches') {
           const benchGeometry = new THREE.BoxGeometry(1.5, 0.3, 0.5);
           const benchMaterial = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
           const bench = new THREE.Mesh(benchGeometry, benchMaterial);
           bench.position.set(-2 + index * 3, 0.15, 1.5);
           bench.castShadow = true;
+          bench.userData = { objectId: `ai-bench-${index}` };
           scene.add(bench);
+          
+          // Add bench to scene objects
+          newSceneObjects.push({
+            id: `ai-bench-${index}`,
+            type: 'ai-bench',
+            name: `AI Bench ${index + 1}`,
+            mesh: bench,
+            position: [-2 + index * 3, 0.15, 1.5],
+            rotation: [0, 0, 0],
+            scale: [1, 1, 1],
+            rotatable: false
+          });
         }
       });
     }
@@ -814,6 +878,7 @@ const StreetView3D = ({ selectedArea, onClose }) => {
         const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
         trunk.position.set(4 + i * 2, 1.25, -2);
         trunk.castShadow = true;
+        trunk.userData = { objectId: `ai-suggested-tree-${i}` };
         scene.add(trunk);
         
         const leavesGeometry = new THREE.SphereGeometry(1, 8, 8);
@@ -821,9 +886,27 @@ const StreetView3D = ({ selectedArea, onClose }) => {
         const leaves = new THREE.Mesh(leavesGeometry, leavesMaterial);
         leaves.position.set(4 + i * 2, 3.5, -2);
         leaves.castShadow = true;
+        leaves.userData = { objectId: `ai-suggested-tree-${i}`, isLeaves: true };
         scene.add(leaves);
+        
+        // Add suggested tree to scene objects
+        newSceneObjects.push({
+          id: `ai-suggested-tree-${i}`,
+          type: 'ai-suggested-tree',
+          name: `AI Suggested Tree ${i + 1}`,
+          mesh: trunk,
+          leaves: leaves,
+          position: [4 + i * 2, 1.25, -2],
+          rotation: [0, 0, 0],
+          scale: [1, 1, 1],
+          rotatable: false
+        });
       }
     }
+    
+    // Set all collected objects at once
+    console.log('Generated scene objects:', newSceneObjects);
+    setSceneObjects(newSceneObjects);
   };
 
   const getStreetViewImage = async (area) => {
@@ -1052,7 +1135,8 @@ ${geminiResponse.analysis || 'Analysis not available'}`;
       mesh: null,
       position: [...config.defaultPosition],
       rotation: config.rotation ? [...config.rotation] : [0, 0, 0],
-      scale: [1, 1, 1]
+      scale: [1, 1, 1],
+      rotatable: config.rotatable || false
     };
 
     // Create the mesh
@@ -1095,6 +1179,9 @@ ${geminiResponse.analysis || 'Analysis not available'}`;
     if (object.leaves) {
       sceneRef.current.remove(object.leaves);
     }
+    if (object.light) {
+      sceneRef.current.remove(object.light);
+    }
 
     setSceneObjects(prev => prev.filter(obj => obj.id !== objectId));
     if (selectedObject?.id === objectId) {
@@ -1110,8 +1197,33 @@ ${geminiResponse.analysis || 'Analysis not available'}`;
     if (object.mesh) {
       object.mesh.position.set(x, y, z);
     }
+    
+    // Handle special object types
     if (object.leaves) {
       object.leaves.position.set(x, y + 2.5, z);
+    }
+    if (object.light) {
+      object.light.position.set(x, y + 2.2, z);
+    }
+
+    setSceneObjects(prev => [...prev]); // Trigger re-render
+  };
+
+  const updateObjectRotation = (objectId, x, y, z) => {
+    const object = sceneObjects.find(obj => obj.id === objectId);
+    if (!object) return;
+
+    object.rotation = [x, y, z];
+    if (object.mesh) {
+      object.mesh.rotation.set(x, y, z);
+    }
+    
+    // Handle special object types
+    if (object.leaves) {
+      object.leaves.rotation.set(x, y, z);
+    }
+    if (object.light) {
+      object.light.rotation.set(x, y, z);
     }
 
     setSceneObjects(prev => [...prev]); // Trigger re-render
@@ -1127,16 +1239,36 @@ ${geminiResponse.analysis || 'Analysis not available'}`;
       highlightMaterial.emissiveIntensity = 0.3;
       object.mesh.material = highlightMaterial;
     } else {
-      // Restore original material
-      const config = OBJECT_CONFIGS[object.type];
-      if (config) {
-        object.mesh.material = config.material.clone();
-        object.mesh.material.castShadow = true;
-        object.mesh.material.receiveShadow = true;
+      // Restore original material based on object type
+      if (object.type.startsWith('ai-')) {
+        // For AI-generated objects, restore their original materials
+        if (object.type === 'ai-road') {
+          object.mesh.material = new THREE.MeshLambertMaterial({ color: 0x2C2C2C });
+        } else if (object.type === 'ai-sidewalk') {
+          object.mesh.material = new THREE.MeshLambertMaterial({ color: 0xD3D3D3 });
+        } else if (object.type === 'ai-building') {
+          object.mesh.material = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
+        } else if (object.type === 'ai-tree' || object.type === 'ai-suggested-tree') {
+          object.mesh.material = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
+        } else if (object.type === 'ai-street-light') {
+          object.mesh.material = new THREE.MeshLambertMaterial({ color: 0x696969 });
+        } else if (object.type === 'ai-parking-meter') {
+          object.mesh.material = new THREE.MeshLambertMaterial({ color: 0x4169E1 });
+        } else if (object.type === 'ai-bench') {
+          object.mesh.material = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
+        }
+      } else {
+        // For user-added objects, use config
+        const config = OBJECT_CONFIGS[object.type];
+        if (config) {
+          object.mesh.material = config.material.clone();
+          object.mesh.material.castShadow = true;
+          object.mesh.material.receiveShadow = true;
+        }
       }
     }
 
-    // Also highlight tree leaves if present
+    // Handle special object types
     if (object.leaves) {
       if (isSelected) {
         const leavesHighlightMaterial = object.leaves.material.clone();
@@ -1147,6 +1279,19 @@ ${geminiResponse.analysis || 'Analysis not available'}`;
         const leavesMaterial = new THREE.MeshLambertMaterial({ color: 0x228B22 });
         object.leaves.material = leavesMaterial;
         object.leaves.castShadow = true;
+      }
+    }
+    
+    if (object.light) {
+      if (isSelected) {
+        const lightHighlightMaterial = object.light.material.clone();
+        lightHighlightMaterial.emissive = new THREE.Color(0x444444);
+        lightHighlightMaterial.emissiveIntensity = 0.3;
+        object.light.material = lightHighlightMaterial;
+      } else {
+        const lightMaterial = new THREE.MeshLambertMaterial({ color: 0xFFFF00 });
+        object.light.material = lightMaterial;
+        object.light.castShadow = true;
       }
     }
   };
@@ -1161,17 +1306,40 @@ ${geminiResponse.analysis || 'Analysis not available'}`;
     raycaster.setFromCamera(mouse, cameraRef.current);
     const intersects = raycaster.intersectObjects(sceneRef.current.children, true);
 
+    console.log('Mouse click intersects:', intersects.map(i => ({
+      object: i.object.name || i.object.type,
+      userData: i.object.userData,
+      objectId: i.object.userData?.objectId
+    })));
+
     if (intersects.length > 0) {
       const intersectedObject = intersects[0].object;
+      
+      // Check if clicked on gizmo
+      if (intersectedObject.userData.type === 'translation' || intersectedObject.userData.type === 'rotation') {
+        if (isEditMode && selectedObject) {
+          setIsDragging(true);
+          if (intersectedObject.userData.type === 'rotation') {
+            setRotationAxis(intersectedObject.userData.axis);
+            setIsRotating(true);
+          } else {
+            setRotationAxis(intersectedObject.userData.axis);
+            setIsRotating(false);
+          }
+        }
+        return;
+      }
+      
       const objectId = intersectedObject.userData.objectId;
+      
+      console.log('Looking for object with ID:', objectId);
+      console.log('Available scene objects:', sceneObjects.map(obj => ({ id: obj.id, name: obj.name, type: obj.type })));
       
       if (objectId) {
         const object = sceneObjects.find(obj => obj.id === objectId);
         if (object) {
           setSelectedObject(object);
-          if (isEditMode) {
-            setIsDragging(true);
-          }
+          // NO direct dragging - only gizmo movement allowed
         }
       } else {
         // Clicked on something that's not an editable object
@@ -1190,22 +1358,181 @@ ${geminiResponse.analysis || 'Analysis not available'}`;
     mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
-    raycaster.setFromCamera(mouse, cameraRef.current);
-    const intersection = new THREE.Vector3();
-    raycaster.ray.intersectPlane(dragPlane, intersection);
-
-    updateObjectPosition(selectedObject.id, intersection.x, intersection.y, intersection.z);
+    if (isRotating && rotationAxis) {
+      // Handle rotation
+      const deltaX = event.movementX || 0;
+      const deltaY = event.movementY || 0;
+      const rotationSpeed = 0.01;
+      
+      const currentRotation = [...selectedObject.rotation];
+      
+      if (rotationAxis === 'x') {
+        currentRotation[0] += deltaY * rotationSpeed;
+      } else if (rotationAxis === 'y') {
+        currentRotation[1] += deltaX * rotationSpeed;
+      } else if (rotationAxis === 'z') {
+        currentRotation[2] += deltaX * rotationSpeed;
+      }
+      
+      updateObjectRotation(selectedObject.id, currentRotation[0], currentRotation[1], currentRotation[2]);
+    } else if (rotationAxis && !isRotating) {
+      // Handle gizmo translation (axis-constrained movement) - improved
+      const deltaX = event.movementX || 0;
+      const deltaY = event.movementY || 0;
+      const movementSpeed = 0.08; // Increased for better responsiveness
+      
+      const currentPosition = [...selectedObject.position];
+      
+      if (rotationAxis === 'x') {
+        currentPosition[0] += deltaX * movementSpeed;
+      } else if (rotationAxis === 'y') {
+        currentPosition[1] -= deltaY * movementSpeed;
+      } else if (rotationAxis === 'z') {
+        currentPosition[2] += deltaY * movementSpeed;
+      }
+      
+      updateObjectPosition(selectedObject.id, currentPosition[0], currentPosition[1], currentPosition[2]);
+    }
+    // Removed free translation - only gizmo movement allowed
   };
 
   const handleMouseUp = () => {
     setIsDragging(false);
+    setIsRotating(false);
+    setRotationAxis(null);
   };
 
   const toggleEditMode = () => {
-    setIsEditMode(!isEditMode);
-    if (!isEditMode) {
+    const newEditMode = !isEditMode;
+    setIsEditMode(newEditMode);
+    
+    if (!newEditMode) {
+      // Disable edit mode - clear selection and stop any dragging
       setSelectedObject(null);
+      setIsDragging(false);
+      setIsRotating(false);
+      setRotationAxis(null);
     }
+  };
+
+  const createGizmo = (object) => {
+    if (!object || !object.mesh) return null;
+
+    const gizmo = new THREE.Group();
+    const objectConfig = OBJECT_CONFIGS[object.type];
+    
+    // Only show rotation gizmo for rotatable objects
+    if (objectConfig && objectConfig.rotatable) {
+      // Y-axis rotation ring (green)
+      const yRingGeometry = new THREE.RingGeometry(1.5, 1.7, 32);
+      const yRingMaterial = new THREE.MeshBasicMaterial({ 
+        color: 0x00ff00, 
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.7
+      });
+      const yRing = new THREE.Mesh(yRingGeometry, yRingMaterial);
+      yRing.rotation.x = Math.PI / 2;
+      yRing.userData = { axis: 'y', type: 'rotation' };
+      gizmo.add(yRing);
+
+      // X-axis rotation ring (red)
+      const xRingGeometry = new THREE.RingGeometry(1.5, 1.7, 32);
+      const xRingMaterial = new THREE.MeshBasicMaterial({ 
+        color: 0xff0000, 
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.7
+      });
+      const xRing = new THREE.Mesh(xRingGeometry, xRingMaterial);
+      xRing.rotation.z = Math.PI / 2;
+      xRing.userData = { axis: 'x', type: 'rotation' };
+      gizmo.add(xRing);
+
+      // Z-axis rotation ring (blue)
+      const zRingGeometry = new THREE.RingGeometry(1.5, 1.7, 32);
+      const zRingMaterial = new THREE.MeshBasicMaterial({ 
+        color: 0x0000ff, 
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.7
+      });
+      const zRing = new THREE.Mesh(zRingGeometry, zRingMaterial);
+      zRing.userData = { axis: 'z', type: 'rotation' };
+      gizmo.add(zRing);
+    }
+
+    // Movement arrows for all objects
+    const arrowLength = 1.5;
+    const arrowHeadLength = 0.3;
+    const arrowHeadWidth = 0.2;
+
+    // X-axis arrow (red)
+    const xArrow = new THREE.ArrowHelper(
+      new THREE.Vector3(1, 0, 0),
+      new THREE.Vector3(0, 0, 0),
+      arrowLength,
+      0xff0000,
+      arrowHeadLength,
+      arrowHeadWidth
+    );
+    xArrow.userData = { axis: 'x', type: 'translation' };
+    gizmo.add(xArrow);
+
+    // Add invisible clickable cylinder for X arrow
+    const xCylinder = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.1, 0.1, arrowLength, 8),
+      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0 })
+    );
+    xCylinder.rotation.z = Math.PI / 2;
+    xCylinder.position.x = arrowLength / 2;
+    xCylinder.userData = { axis: 'x', type: 'translation' };
+    gizmo.add(xCylinder);
+
+    // Y-axis arrow (green)
+    const yArrow = new THREE.ArrowHelper(
+      new THREE.Vector3(0, 1, 0),
+      new THREE.Vector3(0, 0, 0),
+      arrowLength,
+      0x00ff00,
+      arrowHeadLength,
+      arrowHeadWidth
+    );
+    yArrow.userData = { axis: 'y', type: 'translation' };
+    gizmo.add(yArrow);
+
+    // Add invisible clickable cylinder for Y arrow
+    const yCylinder = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.1, 0.1, arrowLength, 8),
+      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0 })
+    );
+    yCylinder.position.y = arrowLength / 2;
+    yCylinder.userData = { axis: 'y', type: 'translation' };
+    gizmo.add(yCylinder);
+
+    // Z-axis arrow (blue)
+    const zArrow = new THREE.ArrowHelper(
+      new THREE.Vector3(0, 0, 1),
+      new THREE.Vector3(0, 0, 0),
+      arrowLength,
+      0x0000ff,
+      arrowHeadLength,
+      arrowHeadWidth
+    );
+    zArrow.userData = { axis: 'z', type: 'translation' };
+    gizmo.add(zArrow);
+
+    // Add invisible clickable cylinder for Z arrow
+    const zCylinder = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.1, 0.1, arrowLength, 8),
+      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0 })
+    );
+    zCylinder.rotation.x = Math.PI / 2;
+    zCylinder.position.z = arrowLength / 2;
+    zCylinder.userData = { axis: 'z', type: 'translation' };
+    gizmo.add(zCylinder);
+
+    return gizmo;
   };
 
   const handleKeyDown = (event) => {
@@ -1249,13 +1576,29 @@ ${geminiResponse.analysis || 'Analysis not available'}`;
     }
   }, [isEditMode]);
 
-  // Update object highlights when selection changes
+  // Update object highlights and gizmo when selection changes
   useEffect(() => {
+    // Remove existing gizmo
+    if (gizmoGroup && sceneRef.current) {
+      sceneRef.current.remove(gizmoGroup);
+      setGizmoGroup(null);
+    }
+
     sceneObjects.forEach(object => {
       const isSelected = selectedObject?.id === object.id;
       updateObjectHighlight(object, isSelected);
     });
-  }, [selectedObject, sceneObjects]);
+
+    // Add gizmo for selected object ONLY when edit mode is ON
+    if (selectedObject && isEditMode && sceneRef.current) {
+      const gizmo = createGizmo(selectedObject);
+      if (gizmo) {
+        gizmo.position.copy(selectedObject.mesh.position);
+        sceneRef.current.add(gizmo);
+        setGizmoGroup(gizmo);
+      }
+    }
+  }, [selectedObject, sceneObjects, isEditMode]);
 
   if (!selectedArea) return null;
 
@@ -1337,8 +1680,13 @@ ${geminiResponse.analysis || 'Analysis not available'}`;
                 <ControlPanel>
                   <EditorTitle>🎯 Selected: {selectedObject.name}</EditorTitle>
                   <InfoText style={{ fontSize: '11px', color: '#666', marginBottom: '10px' }}>
-                    • Drag to move (in edit mode)
+                    • Use colored arrows to move (in edit mode)
                   </InfoText>
+                  {selectedObject.rotatable && (
+                    <InfoText style={{ fontSize: '11px', color: '#007bff', marginBottom: '10px' }}>
+                      • Use colored rings to rotate
+                    </InfoText>
+                  )}
                   <InfoText style={{ fontSize: '11px', color: '#dc3545', marginBottom: '10px' }}>
                     • Press Backspace to delete
                   </InfoText>
@@ -1378,6 +1726,9 @@ ${geminiResponse.analysis || 'Analysis not available'}`;
                   <InfoText style={{ fontSize: '12px' }}>
                     • Press Backspace to delete selected object
                   </InfoText>
+                  <InfoText style={{ fontSize: '12px' }}>
+                    • Enable Edit Mode to move and rotate objects
+                  </InfoText>
                 </>
               )}
               {isEditMode && (
@@ -1389,10 +1740,10 @@ ${geminiResponse.analysis || 'Analysis not available'}`;
                     • Click objects to select them
                   </InfoText>
                   <InfoText style={{ fontSize: '12px' }}>
-                    • Drag objects to move them
+                    • Use colored arrows to move along axes
                   </InfoText>
                   <InfoText style={{ fontSize: '12px' }}>
-                    • Use position controls to fine-tune
+                    • Use colored rings to rotate (roads/sidewalks)
                   </InfoText>
                   <InfoText style={{ fontSize: '12px' }}>
                     • Press Backspace to delete selected object
