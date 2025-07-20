@@ -280,26 +280,6 @@ const ControlPanel = styled.div`
   margin-top: 10px;
 `;
 
-const ControlRow = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 8px;
-`;
-
-const ControlLabel = styled.label`
-  font-size: 11px;
-  color: #666;
-  min-width: 40px;
-`;
-
-const ControlInput = styled.input`
-  width: 60px;
-  padding: 4px 6px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  font-size: 11px;
-`;
-
 const ModeToggle = styled.button`
   background: ${props => props.active ? '#007bff' : '#6c757d'};
   color: white;
@@ -455,6 +435,10 @@ const StreetView3D = ({ selectedArea, onClose }) => {
       child.type === 'AmbientLight' || 
       child.type === 'DirectionalLight'
     );
+
+    // Clear scene objects list
+    setSceneObjects([]);
+    setSelectedObject(null);
     
     if (!geminiData) {
       // Fallback model if no Gemini data
@@ -463,7 +447,19 @@ const StreetView3D = ({ selectedArea, onClose }) => {
       const building = new THREE.Mesh(buildingGeometry, buildingMaterial);
       building.position.set(0, 2, 0);
       building.castShadow = true;
+      building.userData = { objectId: 'fallback-building' };
       scene.add(building);
+      
+      // Add to scene objects list
+      setSceneObjects([{
+        id: 'fallback-building',
+        type: 'ai-building',
+        name: 'AI Building',
+        mesh: building,
+        position: [0, 2, 0],
+        rotation: [0, 0, 0],
+        scale: [1, 1, 1]
+      }]);
       return;
     }
 
@@ -511,7 +507,19 @@ const StreetView3D = ({ selectedArea, onClose }) => {
       const road = new THREE.Mesh(roadGeometry, roadMaterial);
       road.rotation.x = -Math.PI / 2;
       road.position.set(0, 0.01, 0);
+      road.userData = { objectId: 'ai-road' };
       scene.add(road);
+      
+      // Add road to scene objects
+      setSceneObjects(prev => [...prev, {
+        id: 'ai-road',
+        type: 'ai-road',
+        name: 'AI Road',
+        mesh: road,
+        position: [0, 0.01, 0],
+        rotation: [-Math.PI / 2, 0, 0],
+        scale: [1, 1, 1]
+      }]);
       
       // Add lane markings based on number of lanes
       if (roadLanes >= 2) {
@@ -546,12 +554,36 @@ const StreetView3D = ({ selectedArea, onClose }) => {
       const sidewalk = new THREE.Mesh(sidewalkGeometry, sidewalkMaterial);
       sidewalk.rotation.x = -Math.PI / 2;
       sidewalk.position.set(-2.5 - sidewalkWidth * 0.5, 0.01, 0);
+      sidewalk.userData = { objectId: 'ai-sidewalk-1' };
       scene.add(sidewalk);
       
       const sidewalk2 = new THREE.Mesh(sidewalkGeometry, sidewalkMaterial);
       sidewalk2.rotation.x = -Math.PI / 2;
       sidewalk2.position.set(2.5 + sidewalkWidth * 0.5, 0.01, 0);
+      sidewalk2.userData = { objectId: 'ai-sidewalk-2' };
       scene.add(sidewalk2);
+      
+      // Add sidewalks to scene objects
+      setSceneObjects(prev => [...prev, 
+        {
+          id: 'ai-sidewalk-1',
+          type: 'ai-sidewalk',
+          name: 'AI Sidewalk 1',
+          mesh: sidewalk,
+          position: [-2.5 - sidewalkWidth * 0.5, 0.01, 0],
+          rotation: [-Math.PI / 2, 0, 0],
+          scale: [1, 1, 1]
+        },
+        {
+          id: 'ai-sidewalk-2',
+          type: 'ai-sidewalk',
+          name: 'AI Sidewalk 2',
+          mesh: sidewalk2,
+          position: [2.5 + sidewalkWidth * 0.5, 0.01, 0],
+          rotation: [-Math.PI / 2, 0, 0],
+          scale: [1, 1, 1]
+        }
+      ]);
     }
 
     // Generate buildings based on detailed building data
@@ -573,7 +605,19 @@ const StreetView3D = ({ selectedArea, onClose }) => {
         const buildingMesh = new THREE.Mesh(buildingGeometry, buildingMaterial);
         buildingMesh.position.set(xPos, height / 2, -3);
         buildingMesh.castShadow = true;
+        buildingMesh.userData = { objectId: `ai-building-${index}` };
         scene.add(buildingMesh);
+        
+        // Add building to scene objects
+        setSceneObjects(prev => [...prev, {
+          id: `ai-building-${index}`,
+          type: 'ai-building',
+          name: `AI Building ${index + 1}`,
+          mesh: buildingMesh,
+          position: [xPos, height / 2, -3],
+          rotation: [0, 0, 0],
+          scale: [1, 1, 1]
+        }]);
         
         // Add windows based on window description
         if (building.windows !== 'none') {
@@ -617,7 +661,19 @@ const StreetView3D = ({ selectedArea, onClose }) => {
         const building = new THREE.Mesh(buildingGeometry, buildingMaterial);
         building.position.set(-4 + i * 3, height / 2, -3);
         building.castShadow = true;
+        building.userData = { objectId: `ai-building-fallback-${i}` };
         scene.add(building);
+        
+        // Add fallback building to scene objects
+        setSceneObjects(prev => [...prev, {
+          id: `ai-building-fallback-${i}`,
+          type: 'ai-building',
+          name: `AI Building ${i + 1}`,
+          mesh: building,
+          position: [-4 + i * 3, height / 2, -3],
+          rotation: [0, 0, 0],
+          scale: [1, 1, 1]
+        }]);
       }
     }
 
@@ -648,6 +704,7 @@ const StreetView3D = ({ selectedArea, onClose }) => {
         const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
         trunk.position.set(xPos, trunkHeight / 2, zPos);
         trunk.castShadow = true;
+        trunk.userData = { objectId: `ai-tree-${index}` };
         scene.add(trunk);
         
         // Tree leaves
@@ -656,7 +713,20 @@ const StreetView3D = ({ selectedArea, onClose }) => {
         const leaves = new THREE.Mesh(leavesGeometry, leavesMaterial);
         leaves.position.set(xPos, trunkHeight + treeSize * 0.5, zPos);
         leaves.castShadow = true;
+        leaves.userData = { objectId: `ai-tree-${index}`, isLeaves: true };
         scene.add(leaves);
+        
+        // Add tree to scene objects
+        setSceneObjects(prev => [...prev, {
+          id: `ai-tree-${index}`,
+          type: 'ai-tree',
+          name: `AI Tree ${index + 1}`,
+          mesh: trunk,
+          leaves: leaves,
+          position: [xPos, trunkHeight / 2, zPos],
+          rotation: [0, 0, 0],
+          scale: [1, 1, 1]
+        }]);
         
         // Additional foliage for larger trees
         if (treeSize > 1) {
@@ -676,6 +746,7 @@ const StreetView3D = ({ selectedArea, onClose }) => {
         const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
         trunk.position.set(-6 + i * 2.5, 1.25, 3);
         trunk.castShadow = true;
+        trunk.userData = { objectId: `ai-tree-fallback-${i}` };
         scene.add(trunk);
         
         const leavesGeometry = new THREE.SphereGeometry(1, 8, 8);
@@ -683,7 +754,20 @@ const StreetView3D = ({ selectedArea, onClose }) => {
         const leaves = new THREE.Mesh(leavesGeometry, leavesMaterial);
         leaves.position.set(-6 + i * 2.5, 3.5, 3);
         leaves.castShadow = true;
+        leaves.userData = { objectId: `ai-tree-fallback-${i}`, isLeaves: true };
         scene.add(leaves);
+        
+        // Add fallback tree to scene objects
+        setSceneObjects(prev => [...prev, {
+          id: `ai-tree-fallback-${i}`,
+          type: 'ai-tree',
+          name: `AI Tree ${i + 1}`,
+          mesh: trunk,
+          leaves: leaves,
+          position: [-6 + i * 2.5, 1.25, 3],
+          rotation: [0, 0, 0],
+          scale: [1, 1, 1]
+        }]);
       }
     }
 
@@ -1033,8 +1117,42 @@ ${geminiResponse.analysis || 'Analysis not available'}`;
     setSceneObjects(prev => [...prev]); // Trigger re-render
   };
 
+  const updateObjectHighlight = (object, isSelected) => {
+    if (!object.mesh) return;
+
+    if (isSelected) {
+      // Create highlight material
+      const highlightMaterial = object.mesh.material.clone();
+      highlightMaterial.emissive = new THREE.Color(0x444444);
+      highlightMaterial.emissiveIntensity = 0.3;
+      object.mesh.material = highlightMaterial;
+    } else {
+      // Restore original material
+      const config = OBJECT_CONFIGS[object.type];
+      if (config) {
+        object.mesh.material = config.material.clone();
+        object.mesh.material.castShadow = true;
+        object.mesh.material.receiveShadow = true;
+      }
+    }
+
+    // Also highlight tree leaves if present
+    if (object.leaves) {
+      if (isSelected) {
+        const leavesHighlightMaterial = object.leaves.material.clone();
+        leavesHighlightMaterial.emissive = new THREE.Color(0x444444);
+        leavesHighlightMaterial.emissiveIntensity = 0.3;
+        object.leaves.material = leavesHighlightMaterial;
+      } else {
+        const leavesMaterial = new THREE.MeshLambertMaterial({ color: 0x228B22 });
+        object.leaves.material = leavesMaterial;
+        object.leaves.castShadow = true;
+      }
+    }
+  };
+
   const handleMouseDown = (event) => {
-    if (!isEditMode || !sceneRef.current || !cameraRef.current) return;
+    if (!sceneRef.current || !cameraRef.current) return;
 
     const rect = canvasRef.current.getBoundingClientRect();
     mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
@@ -1051,9 +1169,17 @@ ${geminiResponse.analysis || 'Analysis not available'}`;
         const object = sceneObjects.find(obj => obj.id === objectId);
         if (object) {
           setSelectedObject(object);
-          setIsDragging(true);
+          if (isEditMode) {
+            setIsDragging(true);
+          }
         }
+      } else {
+        // Clicked on something that's not an editable object
+        setSelectedObject(null);
       }
+    } else {
+      // Clicked on empty space
+      setSelectedObject(null);
     }
   };
 
@@ -1082,8 +1208,16 @@ ${geminiResponse.analysis || 'Analysis not available'}`;
     }
   };
 
+  const handleKeyDown = (event) => {
+    if (event.key === 'Backspace' && selectedObject) {
+      event.preventDefault();
+      removeObject(selectedObject.id);
+    }
+  };
+
   useEffect(() => {
     window.addEventListener('resize', handleResize);
+    window.addEventListener('keydown', handleKeyDown);
     
     // Add mouse event listeners for editor
     if (canvasRef.current) {
@@ -1094,6 +1228,7 @@ ${geminiResponse.analysis || 'Analysis not available'}`;
     
     return () => {
       window.removeEventListener('resize', handleResize);
+      window.removeEventListener('keydown', handleKeyDown);
       // Clean up controls
       if (controlsRef.current) {
         controlsRef.current.dispose();
@@ -1113,6 +1248,14 @@ ${geminiResponse.analysis || 'Analysis not available'}`;
       controlsRef.current.enabled = !isEditMode;
     }
   }, [isEditMode]);
+
+  // Update object highlights when selection changes
+  useEffect(() => {
+    sceneObjects.forEach(object => {
+      const isSelected = selectedObject?.id === object.id;
+      updateObjectHighlight(object, isSelected);
+    });
+  }, [selectedObject, sceneObjects]);
 
   if (!selectedArea) return null;
 
@@ -1192,30 +1335,13 @@ ${geminiResponse.analysis || 'Analysis not available'}`;
 
               {selectedObject && (
                 <ControlPanel>
-                  <EditorTitle>⚙️ Object Controls</EditorTitle>
-                  <ControlRow>
-                    <ControlLabel>X:</ControlLabel>
-                    <ControlInput
-                      type="number"
-                      step="0.1"
-                      value={selectedObject.position[0]}
-                      onChange={(e) => updateObjectPosition(selectedObject.id, parseFloat(e.target.value), selectedObject.position[1], selectedObject.position[2])}
-                    />
-                    <ControlLabel>Y:</ControlLabel>
-                    <ControlInput
-                      type="number"
-                      step="0.1"
-                      value={selectedObject.position[1]}
-                      onChange={(e) => updateObjectPosition(selectedObject.id, selectedObject.position[0], parseFloat(e.target.value), selectedObject.position[2])}
-                    />
-                    <ControlLabel>Z:</ControlLabel>
-                    <ControlInput
-                      type="number"
-                      step="0.1"
-                      value={selectedObject.position[2]}
-                      onChange={(e) => updateObjectPosition(selectedObject.id, selectedObject.position[0], selectedObject.position[1], parseFloat(e.target.value))}
-                    />
-                  </ControlRow>
+                  <EditorTitle>🎯 Selected: {selectedObject.name}</EditorTitle>
+                  <InfoText style={{ fontSize: '11px', color: '#666', marginBottom: '10px' }}>
+                    • Drag to move (in edit mode)
+                  </InfoText>
+                  <InfoText style={{ fontSize: '11px', color: '#dc3545', marginBottom: '10px' }}>
+                    • Press Backspace to delete
+                  </InfoText>
                 </ControlPanel>
               )}
             </EditorSection>
@@ -1241,6 +1367,19 @@ ${geminiResponse.analysis || 'Analysis not available'}`;
               <InfoText>
                 <strong>Right-click:</strong> Pan view
               </InfoText>
+              {!isEditMode && (
+                <>
+                  <InfoText style={{ color: '#28a745', fontWeight: 'bold', marginTop: '10px' }}>
+                    🎯 Object Selection:
+                  </InfoText>
+                  <InfoText style={{ fontSize: '12px' }}>
+                    • Click objects to select them (highlighted)
+                  </InfoText>
+                  <InfoText style={{ fontSize: '12px' }}>
+                    • Press Backspace to delete selected object
+                  </InfoText>
+                </>
+              )}
               {isEditMode && (
                 <>
                   <InfoText style={{ color: '#007bff', fontWeight: 'bold', marginTop: '10px' }}>
@@ -1254,6 +1393,9 @@ ${geminiResponse.analysis || 'Analysis not available'}`;
                   </InfoText>
                   <InfoText style={{ fontSize: '12px' }}>
                     • Use position controls to fine-tune
+                  </InfoText>
+                  <InfoText style={{ fontSize: '12px' }}>
+                    • Press Backspace to delete selected object
                   </InfoText>
                 </>
               )}
